@@ -39,7 +39,7 @@ def post_entry(tenant, payload, idempotency_key: str, request_hash: bytes):
     # 1. Idempotency Check
     key_row, created = get_or_insert_idempotency_key(tenant.id, idempotency_key, request_hash)
     if not created:
-        if key_row.request_hash != request_hash:
+        if bytes(key_row.request_hash) != request_hash:
             raise PostingError("idempotency_key_reuse")
         # For replay, we just return the stored response
         return key_row.response_code, key_row.response_body
@@ -54,11 +54,27 @@ def post_entry(tenant, payload, idempotency_key: str, request_hash: bytes):
     description = payload.get('description', '')
     lines_data = payload['lines']
     
-    # Strictly check for floats
+    if len(lines_data) < 2:
+        raise PostingError("Journal entry must have at least 2 lines")
+    
+    # Strictly check for floats and validate balances
+    net = Decimal('0.0000')
     for line in lines_data:
         if isinstance(line['amount'], float):
             raise PostingError("Floats are strictly prohibited for monetary amounts.")
-        line['amount_dec'] = Decimal(str(line['amount']))
+        
+        amount_dec = Decimal(str(line['amount'])).quantize(Decimal('0.0001'))
+        if amount_dec <= 0:
+            raise PostingError("Amount must be strictly positive")
+            
+        line['amount_dec'] = amount_dec
+        if line['direction'] == 'DEBIT':
+            net += amount_dec
+        else:
+            net -= amount_dec
+            
+    if net != 0:
+        raise PostingError("Journal entry is unbalanced")
     
     # 4. Deterministic Row Locking
     account_ids = list({line['account_id'] for line in lines_data})
@@ -101,6 +117,9 @@ def post_entry(tenant, payload, idempotency_key: str, request_hash: bytes):
             else:
                 acc.balance -= amount
         
+        # Increment version for OCC
+        acc.version += 1
+        
         lines_to_create.append(TransactionLine(
             tenant=tenant,
             journal_entry=entry,
@@ -110,7 +129,7 @@ def post_entry(tenant, payload, idempotency_key: str, request_hash: bytes):
         ))
     
     TransactionLine.objects.bulk_create(lines_to_create)
-    Account.objects.bulk_update(accounts, ['balance'])
+    Account.objects.bulk_update(accounts, ['balance', 'version'])
     
     # 7. Insert Outbox Event
     response_body = {
@@ -125,8 +144,12 @@ def post_entry(tenant, payload, idempotency_key: str, request_hash: bytes):
     )
     
     # 8. Record Idempotency Success
-    key_row.response_code = 201
-    key_row.response_body = response_body
-    key_row.save()
+    IdempotencyKey.objects.filter(
+        tenant_id=tenant.id, 
+        key=idempotency_key
+    ).update(
+        response_code=201, 
+        response_body=response_body
+    )
     
     return 201, response_body
