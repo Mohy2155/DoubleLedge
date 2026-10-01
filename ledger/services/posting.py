@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from django.db import OperationalError, connection, transaction
 
-from ledger.models import Account, JournalEntry, OutboxEvent, TransactionLine
+from ledger.models import Account, IdempotencyKey, JournalEntry, OutboxEvent, TransactionLine
 from ledger.services.idempotency import get_or_insert_idempotency_key
 
 

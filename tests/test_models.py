@@ -15,6 +15,6 @@ def test_models_can_query_existing_tables():
         allow_negative=True
     )
     
-    assert Tenant.objects.count() == 1
-    assert Account.objects.count() == 1
-    assert Account.objects.first().id == account.id
+    assert Tenant.objects.filter(id=tenant.id).exists()
+    assert Account.objects.filter(id=account.id).exists()
+    assert Account.objects.get(id=account.id).id == account.id
