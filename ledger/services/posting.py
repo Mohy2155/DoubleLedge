@@ -55,17 +55,26 @@ def post_entry(tenant, payload, idempotency_key: str, request_hash: bytes):
     lines_data = payload['lines']
     
     if len(lines_data) < 2:
-        raise PostingError("Journal entry must have at least 2 lines")
+        raise PostingError("unbalanced_entry")
     
     # Strictly check for floats and validate balances
     net = Decimal('0.0000')
     for line in lines_data:
-        if isinstance(line['amount'], float):
-            raise PostingError("Floats are strictly prohibited for monetary amounts.")
+        if isinstance(line['amount'], float) or isinstance(line['amount'], int):
+            # Ints aren't strictly floats, but spec says "monetary amounts must cross boundaries strictly as strings"
+            if not isinstance(line['amount'], str):
+                raise PostingError("invalid_amount_format")
         
-        amount_dec = Decimal(str(line['amount'])).quantize(Decimal('0.0001'))
+        try:
+            amount_dec = Decimal(line['amount'])
+        except Exception:
+            raise PostingError("invalid_amount_format")
+            
+        if amount_dec.as_tuple().exponent < -4:
+            raise PostingError("invalid_amount_precision")
+            
         if amount_dec <= 0:
-            raise PostingError("Amount must be strictly positive")
+            raise PostingError("invalid_amount")
             
         line['amount_dec'] = amount_dec
         if line['direction'] == 'DEBIT':
@@ -74,7 +83,7 @@ def post_entry(tenant, payload, idempotency_key: str, request_hash: bytes):
             net -= amount_dec
             
     if net != 0:
-        raise PostingError("Journal entry is unbalanced")
+        raise PostingError("unbalanced_entry")
     
     # 4. Deterministic Row Locking
     account_ids = list({line['account_id'] for line in lines_data})
