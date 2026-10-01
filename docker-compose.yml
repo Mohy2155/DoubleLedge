@@ -28,6 +28,8 @@ services:
     command: python manage.py runserver 0.0.0.0:8000
     ports:
       - "8000:8000"
+    volumes:
+      - .:/app
     env_file:
       - .env
     environment:
@@ -43,6 +45,8 @@ services:
   celery_worker:
     build: .
     command: celery -A config worker -l INFO
+    volumes:
+      - .:/app
     env_file:
       - .env
     environment:
@@ -58,6 +62,8 @@ services:
   celery_beat:
     build: .
     command: celery -A config beat -l INFO
+    volumes:
+      - .:/app
     env_file:
       - .env
     environment:
