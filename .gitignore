@@ -1,0 +1,27 @@
+# Python/Django caches
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+ENV/
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Environment files
+.env
+
+# Agent artifacts
+.agents/
+.agent/
+skills/
+.skills/
+*.skill
+.claude/
+.cursor/
+.copilot/

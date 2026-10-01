@@ -1,0 +1,18 @@
+Metadata-Version: 2.4
+Name: doubleline
+Version: 0.1.0
+Summary: A double-entry accounting engine
+Requires-Python: >=3.12
+Requires-Dist: django<5.1,>=5.0
+Requires-Dist: djangorestframework>=3.15
+Requires-Dist: psycopg[binary]>=3.1.18
+Requires-Dist: redis>=5.0.3
+Requires-Dist: celery>=5.3.6
+Requires-Dist: pyjwt[crypto]>=2.8.0
+Requires-Dist: pydantic>=2.6.4
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: pytest-django; extra == "dev"
+Requires-Dist: hypothesis; extra == "dev"
+Requires-Dist: ruff; extra == "dev"
+Requires-Dist: mypy; extra == "dev"
