@@ -104,3 +104,19 @@ class OutboxEvent(models.Model):
     class Meta:
         managed = False
         db_table = 'outbox_events'
+
+class ReconciliationReport(models.Model):
+    class Status(models.TextChoices):
+        CLEAN = 'CLEAN'
+        DRIFT_DETECTED = 'DRIFT_DETECTED'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey(Tenant, on_delete=models.PROTECT)
+    timestamp = models.DateTimeField(default=timezone.now)
+    status = models.TextField(choices=Status.choices)
+    accounts_checked = models.IntegerField(default=0)
+    discrepancies = models.JSONField(default=dict)
+
+    class Meta:
+        managed = False
+        db_table = 'reconciliation_reports'

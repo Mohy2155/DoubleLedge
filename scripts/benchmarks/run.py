@@ -52,7 +52,6 @@ def setup_data():
     
     asset, _ = Account.objects.get_or_create(tenant=tenant, name="Asset", type=Account.Type.ASSET, currency="USD")
     asset.allow_negative = True
-    asset.balance = Decimal("1000000.00")
     asset.save()
     
     liability, _ = Account.objects.get_or_create(tenant=tenant, name="Liability", type=Account.Type.LIABILITY, currency="USD")
@@ -66,6 +65,21 @@ def setup_data():
     expense, _ = Account.objects.get_or_create(tenant=tenant, name="Expense", type=Account.Type.EXPENSE, currency="USD")
     expense.allow_negative = True
     expense.save()
+
+    # Seed initial balance properly via the ledger engine to maintain integrity
+    from ledger.services.posting import post_entry
+    import hashlib
+    seed_payload = {
+        "reference_id": f"SEED_{uuid.uuid4()}",
+        "description": "Initial Seed",
+        "lines": [
+            {"account_id": str(asset.id), "amount": "1000000.0000", "direction": "DEBIT"},
+            {"account_id": str(revenue.id), "amount": "1000000.0000", "direction": "CREDIT"}
+        ]
+    }
+    idem_key = "seed_key"
+    req_hash = hashlib.sha256(json.dumps(seed_payload, sort_keys=True).encode()).digest()
+    post_entry(tenant=tenant, payload=seed_payload, idempotency_key=idem_key, request_hash=req_hash)
     
     payload = {
         "tenant_id": str(tenant.id),
@@ -167,12 +181,10 @@ def check_ledger_integrity(tenant, accounts):
     assert total_debits == total_credits, f"Integrity failed: DEBITS {total_debits} != CREDITS {total_credits}"
     print(f"Double-entry Check Passed! Total Debits/Credits perfectly balanced at {total_debits}.")
     
-    # Verify materialized balances (excluding initial seeding)
+    # Verify materialized balances
     for account in accounts:
         account.refresh_from_db()
-        # Seeded balances
-        base_balance = Decimal("1000000.00") if account.name == "Asset" else Decimal("0.00")
-        expected = base_balance + expected_balances[str(account.id)]
+        expected = expected_balances[str(account.id)]
         assert account.balance == expected, f"Account {account.name} balance {account.balance} != expected {expected}"
         
     print("Balance Materialization Check Passed! All accounts match sum of journal lines.")
