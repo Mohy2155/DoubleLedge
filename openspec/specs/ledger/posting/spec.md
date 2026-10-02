@@ -18,3 +18,14 @@ The posting service MUST transparently recover from transient database lock or s
 #### Scenario: Transient deadlock or serialization failure
 - **WHEN** the underlying database raises a 40P01 or 40001 error
 - **THEN** the posting service retries the entire atomic block using an exponential backoff
+
+### Requirement: Transactional outbox event emission
+The posting service MUST atomically record a system event whenever a journal entry is successfully created.
+
+#### Scenario: Successful entry posting
+- **WHEN** a journal entry is posted successfully
+- **THEN** the system inserts an `OutboxEvent` (e.g., `entry.posted`) within the exact same database transaction as the entry lines
+
+#### Scenario: Rollback on failure
+- **WHEN** the journal entry creation fails or rolls back
+- **THEN** no `OutboxEvent` is persisted, preventing phantom webhook dispatches

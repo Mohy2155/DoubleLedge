@@ -39,3 +39,56 @@ class AccountSerializer(serializers.Serializer):
     balance = serializers.DecimalField(max_digits=19, decimal_places=4, read_only=True)
     version = serializers.IntegerField(read_only=True)
     created_at = serializers.DateTimeField(read_only=True)
+
+import socket
+import ipaddress
+from urllib.parse import urlparse
+
+def validate_webhook_url(value):
+    """
+    Registration-time SSRF validation (C-6 fix).
+    Delegates to _assert_safe_ip so the block-list is defined exactly once.
+    """
+    from django.conf import settings
+    from ledger.services.webhooks import WebhookDispatchError, _assert_safe_ip
+
+    parsed = urlparse(value)
+
+    allow_http = getattr(settings, 'WEBHOOK_ALLOW_HTTP', False)
+    if parsed.scheme == 'http' and not allow_http:
+        raise serializers.ValidationError("URL must use https scheme.")
+    if parsed.scheme not in ('http', 'https'):
+        raise serializers.ValidationError(f"Unsupported URL scheme.")
+
+    hostname = parsed.hostname
+    if not hostname:
+        raise serializers.ValidationError("Invalid URL hostname.")
+
+    try:
+        resolved_ip = socket.gethostbyname(hostname)
+    except socket.gaierror:
+        raise serializers.ValidationError("Could not resolve hostname.")
+
+    try:
+        _assert_safe_ip(resolved_ip)
+    except WebhookDispatchError as exc:
+        raise serializers.ValidationError(str(exc))
+
+    return value
+
+
+
+class WebhookEndpointSerializer(serializers.Serializer):
+    id = serializers.UUIDField(read_only=True)
+    url = serializers.URLField(validators=[validate_webhook_url])
+    event_types = serializers.ListField(
+        child=serializers.ChoiceField(choices=['entry.posted', 'entry.reversed']),
+        allow_empty=False
+    )
+    is_active = serializers.BooleanField(default=True)
+    created_at = serializers.DateTimeField(read_only=True)
+
+
+class WebhookEndpointCreateSerializer(WebhookEndpointSerializer):
+    secret = serializers.CharField(read_only=True)
+
