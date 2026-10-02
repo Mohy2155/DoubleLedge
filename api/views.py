@@ -205,3 +205,73 @@ class AccountViewSet(viewsets.ViewSet):
             "results": results,
             "next_cursor": next_cursor
         })
+
+import secrets
+from api.serializers import WebhookEndpointSerializer, WebhookEndpointCreateSerializer
+from ledger.models import WebhookEndpoint
+
+class WebhookEndpointViewSet(viewsets.ViewSet):
+    
+    @tenant_transaction()
+    def create(self, request):
+        serializer = WebhookEndpointSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        tenant_id = request.user.id
+        # Check duplicate url
+        if WebhookEndpoint.objects.filter(tenant_id=tenant_id, url=serializer.validated_data['url']).exists():
+            return Response({"error": {"code": "conflict", "message": "Webhook endpoint with this URL already exists."}}, status=409)
+            
+        secret = f"whsec_{secrets.token_urlsafe(32)}"
+        
+        endpoint = WebhookEndpoint.objects.create(
+            tenant_id=tenant_id,
+            url=serializer.validated_data['url'],
+            secret=secret,
+            event_types=serializer.validated_data['event_types'],
+            is_active=serializer.validated_data.get('is_active', True)
+        )
+        
+        data = WebhookEndpointCreateSerializer(endpoint).data
+        return Response(data, status=201)
+
+    @tenant_transaction()
+    def list(self, request):
+        tenant_id = request.user.id
+        endpoints = WebhookEndpoint.objects.filter(tenant_id=tenant_id)
+        return Response(WebhookEndpointSerializer(endpoints, many=True).data)
+
+    @tenant_transaction()
+    def retrieve(self, request, pk=None):
+        tenant_id = request.user.id
+        endpoint = get_object_or_404(WebhookEndpoint, tenant_id=tenant_id, pk=pk)
+        return Response(WebhookEndpointSerializer(endpoint).data)
+
+    @tenant_transaction()
+    def update(self, request, pk=None):
+        tenant_id = request.user.id
+        endpoint = get_object_or_404(WebhookEndpoint, tenant_id=tenant_id, pk=pk)
+        
+        serializer = WebhookEndpointSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        
+        if 'url' in serializer.validated_data and serializer.validated_data['url'] != endpoint.url:
+            if WebhookEndpoint.objects.filter(tenant_id=tenant_id, url=serializer.validated_data['url']).exclude(pk=pk).exists():
+                return Response({"error": {"code": "conflict", "message": "Webhook endpoint with this URL already exists."}}, status=409)
+            endpoint.url = serializer.validated_data['url']
+            
+        if 'event_types' in serializer.validated_data:
+            endpoint.event_types = serializer.validated_data['event_types']
+            
+        if 'is_active' in serializer.validated_data:
+            endpoint.is_active = serializer.validated_data['is_active']
+            
+        endpoint.save()
+        return Response(WebhookEndpointSerializer(endpoint).data)
+
+    @tenant_transaction()
+    def destroy(self, request, pk=None):
+        tenant_id = request.user.id
+        endpoint = get_object_or_404(WebhookEndpoint, tenant_id=tenant_id, pk=pk)
+        endpoint.delete()
+        return Response(status=204)

@@ -9,6 +9,10 @@ REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
 DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 ALLOWED_HOSTS = ['*']
 
+# Allow plain HTTP webhook dispatch in test/dev environments.
+# When False (production), send_webhook uses the PinnedIPAdapter with TLS SNI pinning.
+WEBHOOK_ALLOW_HTTP = os.environ.get('TESTING', 'False') == 'True' or DEBUG
+
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -139,4 +143,12 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'workers.tasks.run_reconciliation_audit',
         'schedule': crontab(minute='0'),  # run every hour on the hour
     },
+    'dispatch-webhooks-every-minute': {
+        'task': 'workers.tasks.dispatch_webhooks',
+        'schedule': crontab(minute='*'),  # run every minute
+    },
+    'prune-webhooks-daily': {
+        'task': 'workers.tasks.prune_webhooks',
+        'schedule': crontab(minute='0', hour='1'),  # run daily at 1 AM
+    }
 }

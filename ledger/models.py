@@ -2,6 +2,7 @@ import uuid
 
 from django.db import models
 from django.utils import timezone
+from django.contrib.postgres.fields import ArrayField
 
 
 class Tenant(models.Model):
@@ -100,10 +101,58 @@ class OutboxEvent(models.Model):
     created_at = models.DateTimeField(default=timezone.now)
     delivered_at = models.DateTimeField(null=True)
     attempts = models.IntegerField(default=0)
+    fanned_out_at = models.DateTimeField(null=True)
 
     class Meta:
         managed = False
         db_table = 'outbox_events'
+        constraints = [
+            models.UniqueConstraint(fields=['tenant', 'id'], name='unique_tenant_outbox_event')
+        ]
+
+
+class WebhookEndpoint(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey(Tenant, on_delete=models.PROTECT)
+    url = models.TextField()
+    secret = models.TextField()
+    event_types = ArrayField(models.TextField())
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        managed = False
+        db_table = 'webhook_endpoints'
+        constraints = [
+            models.UniqueConstraint(fields=['tenant', 'id'], name='unique_tenant_endpoint_id'),
+            models.UniqueConstraint(fields=['tenant', 'url'], name='unique_tenant_endpoint_url')
+        ]
+
+
+class WebhookDelivery(models.Model):
+    class Status(models.TextChoices):
+        PENDING = 'PENDING'
+        DELIVERED = 'DELIVERED'
+        FAILED = 'FAILED'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey(Tenant, on_delete=models.PROTECT)
+    event = models.ForeignKey(OutboxEvent, on_delete=models.CASCADE)
+    endpoint = models.ForeignKey(WebhookEndpoint, on_delete=models.CASCADE)
+    status = models.TextField(choices=Status.choices, default=Status.PENDING)
+    attempts = models.IntegerField(default=0)
+    next_attempt_at = models.DateTimeField(default=timezone.now)
+    last_error = models.TextField(null=True)
+    last_status_code = models.IntegerField(null=True)
+    delivered_at = models.DateTimeField(null=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        managed = False
+        db_table = 'webhook_deliveries'
+        constraints = [
+            models.UniqueConstraint(fields=['event', 'endpoint'], name='unique_event_endpoint')
+        ]
 
 class ReconciliationReport(models.Model):
     class Status(models.TextChoices):

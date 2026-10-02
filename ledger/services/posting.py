@@ -148,14 +148,24 @@ def post_entry(tenant, payload, idempotency_key: str, request_hash: bytes):
     Account.objects.bulk_update(accounts, ['balance', 'version'])
     
     # 7. Insert Outbox Event
+    event_type = "entry.reversed" if reverses_id else "entry.posted"
     response_body = {
         "id": str(entry.id),
         "reference_id": entry.reference_id,
-        "status": "posted"
+        "description": entry.description,
+        "reverses_id": str(entry.reverses_id) if entry.reverses_id else None,
+        "lines": [
+            {
+                "account_id": str(line.account.id),
+                "direction": line.direction,
+                "amount": str(line.amount)
+            }
+            for line in lines_to_create
+        ]
     }
     OutboxEvent.objects.create(
         tenant=tenant,
-        type="entry.posted",
+        type=event_type,
         payload=response_body
     )
     
