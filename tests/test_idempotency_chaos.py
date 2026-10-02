@@ -1,10 +1,12 @@
-import pytest
 import concurrent.futures
-import threading
 from decimal import Decimal
-from django.db import transaction, connection
-from ledger.models import Tenant, Account, JournalEntry, IdempotencyKey
-from ledger.services.posting import post_entry, PostingError
+
+import pytest
+from django.db import connection
+
+from ledger.models import Account, IdempotencyKey, JournalEntry, Tenant
+from ledger.services.posting import PostingError, post_entry
+
 
 @pytest.fixture
 def tenant():
@@ -33,9 +35,8 @@ def test_concurrent_identical_requests(tenant, accounts):
     }
     
     def worker():
-        from django.db import connection
         connection.close()
-        code, resp = post_entry(tenant, payload, "chaos_idem_1", b"req_hash_1")
+        code, _resp, _ = post_entry(tenant, payload, "chaos_idem_1", b"req_hash_1")
         return code
         
     with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
@@ -72,7 +73,7 @@ def test_payload_conflict_on_same_key(tenant, accounts):
         ]
     }
     
-    code, resp = post_entry(tenant, payload_a, "conflict_key", b"hash_A")
+    code, _resp, _ = post_entry(tenant, payload_a, "conflict_key", b"hash_A")
     assert code == 201
     
     with pytest.raises(PostingError) as exc:
@@ -93,7 +94,6 @@ def test_transaction_abort_crash_rollback(tenant, accounts, monkeypatch):
     }
     
     # Simulate a crash right after checking idempotency by patching `Account.objects.select_for_update`
-    original_select = Account.objects.select_for_update
     
     def mocked_select_for_update(*args, **kwargs):
         raise RuntimeError("Simulated crash")
@@ -108,6 +108,6 @@ def test_transaction_abort_crash_rollback(tenant, accounts, monkeypatch):
     
     # Now restore and verify it succeeds
     monkeypatch.undo()
-    code, resp = post_entry(tenant, payload, "crash_key", b"crash_hash")
+    code, _resp, _ = post_entry(tenant, payload, "crash_key", b"crash_hash")
     assert code == 201
     assert IdempotencyKey.objects.filter(tenant=tenant, key="crash_key").count() == 1

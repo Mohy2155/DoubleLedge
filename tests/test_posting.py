@@ -43,7 +43,7 @@ def test_post_entry_updates_balances_correctly(tenant, accounts):
         ]
     }
     
-    code, resp = post_entry(tenant, payload, "idem_001", b"hash_1")
+    code, _resp, _ = post_entry(tenant, payload, "idem_001", b"hash_1")
     
     assert code == 201
     

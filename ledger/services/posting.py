@@ -4,7 +4,13 @@ from decimal import Decimal
 
 from django.db import OperationalError, connection, transaction
 
-from ledger.models import Account, IdempotencyKey, JournalEntry, OutboxEvent, TransactionLine
+from ledger.models import (
+    Account,
+    IdempotencyKey,
+    JournalEntry,
+    OutboxEvent,
+    TransactionLine,
+)
 from ledger.services.idempotency import get_or_insert_idempotency_key
 
 
@@ -42,7 +48,7 @@ def post_entry(tenant, payload, idempotency_key: str, request_hash: bytes):
         if bytes(key_row.request_hash) != request_hash:
             raise PostingError("idempotency_key_reuse")
         # For replay, we just return the stored response
-        return key_row.response_code, key_row.response_body
+        return key_row.response_code, key_row.response_body, True
     
     # 2. Database Session Setup
     with connection.cursor() as cursor:
@@ -52,6 +58,7 @@ def post_entry(tenant, payload, idempotency_key: str, request_hash: bytes):
     # 3. Extract payload data
     reference_id = payload['reference_id']
     description = payload.get('description', '')
+    reverses_id = payload.get('reverses_id')
     lines_data = payload['lines']
     
     if len(lines_data) < 2:
@@ -60,14 +67,13 @@ def post_entry(tenant, payload, idempotency_key: str, request_hash: bytes):
     # Strictly check for floats and validate balances
     net = Decimal('0.0000')
     for line in lines_data:
-        if isinstance(line['amount'], float) or isinstance(line['amount'], int):
-            # Ints aren't strictly floats, but spec says "monetary amounts must cross boundaries strictly as strings"
-            if not isinstance(line['amount'], str):
-                raise PostingError("invalid_amount_format")
+        if not isinstance(line['amount'], str):
+            raise PostingError("invalid_amount_format")
         
+        from decimal import InvalidOperation
         try:
             amount_dec = Decimal(line['amount'])
-        except Exception:
+        except (ValueError, TypeError, InvalidOperation):
             raise PostingError("invalid_amount_format")
             
         if amount_dec.as_tuple().exponent < -4:
@@ -104,7 +110,8 @@ def post_entry(tenant, payload, idempotency_key: str, request_hash: bytes):
     entry = JournalEntry.objects.create(
         tenant=tenant,
         reference_id=reference_id,
-        description=description
+        description=description,
+        reverses_id=reverses_id
     )
     
     # 6. Insert Lines & Update Balances
@@ -161,4 +168,4 @@ def post_entry(tenant, payload, idempotency_key: str, request_hash: bytes):
         response_body=response_body
     )
     
-    return 201, response_body
+    return 201, response_body, False
