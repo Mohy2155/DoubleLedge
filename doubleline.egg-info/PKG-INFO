@@ -10,6 +10,8 @@ Requires-Dist: redis>=5.0.3
 Requires-Dist: celery>=5.3.6
 Requires-Dist: pyjwt[crypto]>=2.8.0
 Requires-Dist: pydantic>=2.6.4
+Requires-Dist: drf-spectacular>=0.27.1
+Requires-Dist: python-json-logger>=2.0.7
 Provides-Extra: dev
 Requires-Dist: pytest; extra == "dev"
 Requires-Dist: pytest-django; extra == "dev"

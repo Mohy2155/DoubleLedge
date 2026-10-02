@@ -1,4 +1,3 @@
-import re
 
 trigger_sql = """
             CREATE FUNCTION assert_entry_balanced_from_line() RETURNS trigger AS $$
