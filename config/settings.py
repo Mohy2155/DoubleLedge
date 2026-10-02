@@ -22,6 +22,7 @@ INSTALLED_APPS = [
     
     'ledger.apps.LedgerConfig',
     'api.apps.ApiConfig',
+    'workers.apps.WorkersConfig',
 ]
 
 MIDDLEWARE = [
@@ -122,5 +123,20 @@ LOGGING = {
     'root': {
         'handlers': ['console'],
         'level': 'INFO',
+    },
+}
+
+# Celery Configuration
+CELERY_BROKER_URL = REDIS_URL
+CELERY_RESULT_BACKEND = None
+CELERY_TASK_IGNORE_RESULT = True
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+
+from celery.schedules import crontab
+CELERY_BEAT_SCHEDULE = {
+    'run-ledger-reconciliation-hourly': {
+        'task': 'workers.tasks.run_reconciliation_audit',
+        'schedule': crontab(minute='0'),  # run every hour on the hour
     },
 }
