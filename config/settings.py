@@ -150,5 +150,9 @@ CELERY_BEAT_SCHEDULE = {
     'prune-webhooks-daily': {
         'task': 'workers.tasks.prune_webhooks',
         'schedule': crontab(minute='0', hour='1'),  # run daily at 1 AM
+    },
+    'create-snapshots-every-minute': {
+        'task': 'workers.tasks.create_account_balance_snapshots',
+        'schedule': crontab(minute='*'),
     }
 }

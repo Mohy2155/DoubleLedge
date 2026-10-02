@@ -92,3 +92,9 @@ class WebhookEndpointSerializer(serializers.Serializer):
 class WebhookEndpointCreateSerializer(WebhookEndpointSerializer):
     secret = serializers.CharField(read_only=True)
 
+
+class AccountBalanceSerializer(serializers.Serializer):
+    balance = StrictStringDecimalField(max_digits=28, decimal_places=4, read_only=True)
+    debit_total = StrictStringDecimalField(max_digits=28, decimal_places=4, read_only=True)
+    credit_total = StrictStringDecimalField(max_digits=28, decimal_places=4, read_only=True)
+    snapshot_used = serializers.BooleanField(read_only=True)

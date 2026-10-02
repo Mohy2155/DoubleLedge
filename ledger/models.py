@@ -169,3 +169,23 @@ class ReconciliationReport(models.Model):
     class Meta:
         managed = False
         db_table = 'reconciliation_reports'
+
+class BalanceSnapshot(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey(Tenant, on_delete=models.PROTECT)
+    account = models.ForeignKey(Account, on_delete=models.PROTECT)
+    sequence = models.BigIntegerField()
+    entry = models.ForeignKey(JournalEntry, on_delete=models.PROTECT)
+    balance = models.DecimalField(max_digits=28, decimal_places=4)
+    debit_total = models.DecimalField(max_digits=28, decimal_places=4)
+    credit_total = models.DecimalField(max_digits=28, decimal_places=4)
+    line_count = models.BigIntegerField()
+    max_posted_at = models.DateTimeField()
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        managed = False
+        db_table = 'balance_snapshots'
+        constraints = [
+            models.UniqueConstraint(fields=['tenant', 'account', 'sequence'], name='unique_tenant_account_sequence')
+        ]

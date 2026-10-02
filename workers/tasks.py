@@ -131,3 +131,32 @@ def prune_webhooks():
         prune_old_events_and_deliveries(days=7)
     for_each_tenant(run_for_tenant)
 
+
+from ledger.services.snapshots import generate_account_snapshot
+
+@shared_task(ignore_result=True)
+def create_account_balance_snapshots():
+    def run_for_tenant(tenant_id):
+        # We find accounts with uncheckpointed lines > 50
+        accounts_to_snapshot = []
+        with connection.cursor() as cursor:
+            query = """
+                SELECT a.id 
+                FROM accounts a
+                LEFT JOIN balance_snapshots bs ON bs.account_id = a.id AND bs.sequence = (
+                    SELECT MAX(sequence) FROM balance_snapshots WHERE account_id = a.id
+                )
+                JOIN transaction_lines l ON l.account_id = a.id
+                JOIN journal_entries e ON e.id = l.journal_entry_id
+                WHERE bs.sequence IS NULL OR e.sequence > bs.sequence
+                GROUP BY a.id
+                HAVING COUNT(l.id) > 50
+            """
+            cursor.execute(query)
+            accounts_to_snapshot = [row[0] for row in cursor.fetchall()]
+        
+        # generate_account_snapshot creates its own transaction block internally
+        for acc_id in accounts_to_snapshot:
+            generate_account_snapshot(tenant_id, acc_id)
+            
+    for_each_tenant(run_for_tenant)

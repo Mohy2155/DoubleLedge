@@ -121,35 +121,21 @@ class AccountViewSet(viewsets.ViewSet):
         account = get_object_or_404(Account, id=pk, tenant_id=tenant_id)
         
         as_of_str = request.query_params.get('as_of')
-        if not as_of_str:
-            return Response({"error": {"code": "invalid", "message": "as_of parameter is required"}}, status=400)
+        as_of = None
+        if as_of_str:
+            as_of = parse_datetime(as_of_str)
+            if not as_of:
+                return Response({"error": {"code": "invalid", "message": "invalid as_of datetime format"}}, status=400)
+            if as_of.tzinfo is None:
+                return Response({"error": {"code": "invalid", "message": "as_of must be timezone-aware"}}, status=400)
             
-        as_of = parse_datetime(as_of_str)
-        if not as_of:
-            return Response({"error": {"code": "invalid", "message": "invalid as_of datetime format"}}, status=400)
+        from ledger.services.snapshots import BalanceQueryService
+        from api.serializers import AccountBalanceSerializer
         
-        if as_of.tzinfo is None:
-            return Response({"error": {"code": "invalid", "message": "as_of must be timezone-aware"}}, status=400)
-            
-        lines = TransactionLine.objects.filter(
-            tenant_id=tenant_id,
-            account=account,
-            journal_entry__effective_at__lte=as_of
-        )
+        result = BalanceQueryService.get_account_balance(account, as_of=as_of)
         
-        debits = lines.filter(direction='DEBIT').aggregate(total=Sum('amount'))['total'] or Decimal(0)
-        credits = lines.filter(direction='CREDIT').aggregate(total=Sum('amount'))['total'] or Decimal(0)
-        
-        if account.type in ('ASSET', 'EXPENSE'):
-            balance = debits - credits
-        else:
-            balance = credits - debits
-            
-        return Response({
-            "account_id": str(account.id),
-            "balance": str(balance),
-            "as_of": as_of.isoformat()
-        })
+        serializer = AccountBalanceSerializer(result)
+        return Response(serializer.data)
         
     @tenant_transaction()
     @action(detail=True, methods=['get'])

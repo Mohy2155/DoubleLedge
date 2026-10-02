@@ -31,5 +31,8 @@ skills/
 build/
 dist/
 
+
 # Scratch files
 scratch/
+script_51.ps1
+context.txt
