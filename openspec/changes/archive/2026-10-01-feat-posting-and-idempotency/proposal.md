@@ -2,7 +2,7 @@
 
 ## Why
 
-The database schema and triggers currently enforce Doubleline's core invariants, but we lack the application-level service to safely construct and commit these entries. This change implements the core `post_entry` service, bringing deterministic row locking and robust idempotency to the ledger to prevent deadlocks and duplicate processing under concurrent load.
+The database schema and triggers currently enforce DoubleLedge's core invariants, but we lack the application-level service to safely construct and commit these entries. This change implements the core `post_entry` service, bringing deterministic row locking and robust idempotency to the ledger to prevent deadlocks and duplicate processing under concurrent load.
 
 ## What Changes
 

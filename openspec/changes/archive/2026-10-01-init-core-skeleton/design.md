@@ -2,7 +2,7 @@
 
 ## Context
 
-The initial scaffolding of the Doubleline project sets up the foundational database constraints and the application environment. Doubleline delegates correctness entirely to the database layer (PostgreSQL). We need to lay out the project directory, install dependencies, and build the Docker environment.
+The initial scaffolding of the DoubleLedge project sets up the foundational database constraints and the application environment. DoubleLedge delegates correctness entirely to the database layer (PostgreSQL). We need to lay out the project directory, install dependencies, and build the Docker environment.
 
 ## Goals / Non-Goals
 

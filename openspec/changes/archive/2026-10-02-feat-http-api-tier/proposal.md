@@ -2,7 +2,7 @@
 
 ## Why
 
-Doubleline currently enforces accounting correctness via PostgreSQL and provides domain logic in `ledger.services.posting`, but it lacks an external HTTP interface. We need to expose this functionality to external consumers (like B2B platforms, SaaS billing, and wallets) over an HTTP API that strictly enforces authentication, tenant isolation, and the ledger's invariants.
+DoubleLedge currently enforces accounting correctness via PostgreSQL and provides domain logic in `ledger.services.posting`, but it lacks an external HTTP interface. We need to expose this functionality to external consumers (like B2B platforms, SaaS billing, and wallets) over an HTTP API that strictly enforces authentication, tenant isolation, and the ledger's invariants.
 
 ## What Changes
 

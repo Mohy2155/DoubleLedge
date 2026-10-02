@@ -57,7 +57,7 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ.get('DB_NAME', 'doubleline'),
+        'NAME': os.environ.get('DB_NAME', 'doubleledge'),
         'USER': os.environ.get('DB_USER', 'postgres'),
         'PASSWORD': os.environ.get('DB_PASSWORD', 'postgres'),
         'HOST': os.environ.get('DB_HOST', 'localhost'),
@@ -99,7 +99,7 @@ REST_FRAMEWORK = {
 }
 
 SPECTACULAR_SETTINGS = {
-    'TITLE': 'Doubleline API',
+    'TITLE': 'DoubleLedge API',
     'DESCRIPTION': 'A double-entry accounting engine',
     'VERSION': '1.0.0',
 }

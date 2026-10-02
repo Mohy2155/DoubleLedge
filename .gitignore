@@ -25,3 +25,11 @@ skills/
 .claude/
 .cursor/
 .copilot/
+
+# Build artifacts
+*.egg-info/
+build/
+dist/
+
+# Scratch files
+scratch/

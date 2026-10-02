@@ -9,7 +9,8 @@ class StrictStringDecimalField(serializers.DecimalField):
     def to_internal_value(self, data):
         if not isinstance(data, str):
             raise serializers.ValidationError("Monetary amounts must be provided strictly as strings.")
-        return super().to_internal_value(data)
+        super().to_internal_value(data)
+        return data
 
 class TransactionLineSerializer(serializers.Serializer):
     account_id = serializers.UUIDField()

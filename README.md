@@ -1,8 +1,8 @@
-# Doubleline
+# DoubleLedge
 
 **A multi-tenant, append-only, double-entry ledger service where correctness is enforced by the database, not by application code.**
 
-Doubleline is an HTTP API for recording money movement for B2B platforms (marketplaces, SaaS billing, wallets). It is built around one idea: *the invariants of accounting should hold even if the application code is buggy, a worker is `kill -9`'d mid-request, or a developer forgets a filter.*
+DoubleLedge is an HTTP API for recording money movement for B2B platforms (marketplaces, SaaS billing, wallets). It is built around one idea: *the invariants of accounting should hold even if the application code is buggy, a worker is `kill -9`'d mid-request, or a developer forgets a filter.*
 
 | Invariant | Enforced by |
 | --- | --- |
@@ -114,7 +114,7 @@ Each account has exactly one ISO 4217 currency. An entry may span currencies onl
 
 ### 1. Balanced entries, enforced at commit
 
-A plain `CHECK` constraint sees one row at a time and **cannot** express `SUM(debits) = SUM(credits)` across lines. Doubleline uses a **deferred constraint trigger**, which runs once at `COMMIT` after all lines are inserted, so a partially-built entry is allowed mid-transaction but can never be persisted.
+A plain `CHECK` constraint sees one row at a time and **cannot** express `SUM(debits) = SUM(credits)` across lines. DoubleLedge uses a **deferred constraint trigger**, which runs once at `COMMIT` after all lines are inserted, so a partially-built entry is allowed mid-transaction but can never be persisted.
 
 ```sql
 CREATE FUNCTION assert_entry_balanced() RETURNS trigger AS $$
@@ -397,7 +397,7 @@ curl -X POST http://localhost:8000/api/v1/journal-entries/ \
   3. The checkpoint hash chain is intact
   
   Failures raise an alert and a metric; the check can also `--repair` the cache (never the lines).
-* **Tamper-evident checkpoints.** Periodically, each tenant's newly-posted lines are hashed into a batch hash chained to the previous checkpoint. A hash chain on *every* write would serialize all postings per tenant, so Doubleline seals in batches instead. Any later edit to history breaks the chain on the next verification.
+* **Tamper-evident checkpoints.** Periodically, each tenant's newly-posted lines are hashed into a batch hash chained to the previous checkpoint. A hash chain on *every* write would serialize all postings per tenant, so DoubleLedge seals in batches instead. Any later edit to history breaks the chain on the next verification.
 * **Point-in-time balances** using `effective_at` and periodic balance snapshots to avoid scanning full history.
 
 **Integrations**
@@ -419,7 +419,7 @@ curl -X POST http://localhost:8000/api/v1/journal-entries/ \
 Requires Docker and Docker Compose.
 
 ```bash
-git clone https://github.com/<you>/doubleline && cd doubleline
+git clone https://github.com/<you>/doubleledge && cd doubleledge
 cp .env.example .env
 
 make up        # Postgres, Redis, API, Celery worker, Celery beat
@@ -490,7 +490,7 @@ The hot-account row is intentionally included: it shows the honest ceiling of ro
 * **Shared schema + RLS over schema-per-tenant:** scales to many tenants with simple migrations; noisy-neighbor isolation is weaker.
 * **Batched checkpoints over per-write hash chain:** preserves write concurrency; tamper detection is delayed until the next seal.
 * **At-least-once webhooks:** exactly-once delivery isn't possible over HTTP; consumers must dedupe.
-* **Non-goals:** payment processing / card rails, KYC, tax, a UI beyond the demo, and regulatory certification. Doubleline is the *ledger*, not a payments company.
+* **Non-goals:** payment processing / card rails, KYC, tax, a UI beyond the demo, and regulatory certification. DoubleLedge is the *ledger*, not a payments company.
 
 ---
 
@@ -508,7 +508,7 @@ The hot-account row is intentionally included: it shows the honest ceiling of ro
 ## Repository Layout
 
 ```text
-doubleline/
+doubleledge/
 ├── ledger/            # models, posting service, reconciliation
 │   ├── migrations/    # includes RunSQL for triggers, RLS, grants
 │   └── services/

@@ -2,7 +2,7 @@
 
 ## Context
 
-The Doubleline service is currently enforced entirely at the database layer and by the domain logic in `ledger.services.posting`. To integrate with client applications, an HTTP API gateway must be introduced. See proposal.md for motivation - don't restate it.
+The DoubleLedge service is currently enforced entirely at the database layer and by the domain logic in `ledger.services.posting`. To integrate with client applications, an HTTP API gateway must be introduced. See proposal.md for motivation - don't restate it.
 
 ## Goals / Non-Goals
 

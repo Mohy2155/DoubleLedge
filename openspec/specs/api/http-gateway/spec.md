@@ -1,7 +1,7 @@
 # api/http-gateway Specification
 
 ## Purpose
-Exposes the Doubleline ledger service to external clients via a secure HTTP API, enforcing authentication, isolation, and idempotency.
+Exposes the DoubleLedge ledger service to external clients via a secure HTTP API, enforcing authentication, isolation, and idempotency.
 
 ## Requirements
 

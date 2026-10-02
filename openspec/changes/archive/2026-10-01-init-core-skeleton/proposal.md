@@ -2,7 +2,7 @@
 
 ## Why
 
-Doubleline is a new project for a double-entry accounting engine with strict database-enforced invariants. We need to initialize the foundational repository structure, local environment orchestration, and the initial PostgreSQL schema to support the core constraints defined in the `README.md`. 
+DoubleLedge is a new project for a double-entry accounting engine with strict database-enforced invariants. We need to initialize the foundational repository structure, local environment orchestration, and the initial PostgreSQL schema to support the core constraints defined in the `README.md`. 
 
 ## What Changes
 
@@ -27,6 +27,6 @@ Doubleline is a new project for a double-entry accounting engine with strict dat
 
 ## Impact
 
-- Establishes the foundational architecture and schema for all subsequent development on Doubleline.
+- Establishes the foundational architecture and schema for all subsequent development on DoubleLedge.
 - Sets the standard for database-first validation, requiring developers to work within the constraints of RLS and deferred triggers.
 - Defines the local development workflow using Docker Compose and Make.

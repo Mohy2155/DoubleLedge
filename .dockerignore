@@ -1,0 +1,8 @@
+.venv/
+.git/
+.agents/
+.mypy_cache/
+.pytest_cache/
+__pycache__/
+*.egg-info/
+scratch/
