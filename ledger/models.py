@@ -189,3 +189,35 @@ class BalanceSnapshot(models.Model):
         constraints = [
             models.UniqueConstraint(fields=['tenant', 'account', 'sequence'], name='unique_tenant_account_sequence')
         ]
+
+class Hold(models.Model):
+    class Status(models.TextChoices):
+        PENDING = 'PENDING'
+        CAPTURED = 'CAPTURED'
+        VOIDED = 'VOIDED'
+        EXPIRED = 'EXPIRED'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey(Tenant, on_delete=models.PROTECT)
+    reference_id = models.TextField()
+    account = models.ForeignKey(Account, on_delete=models.PROTECT, related_name='holds')
+    currency = models.CharField(max_length=3)
+    amount = models.DecimalField(max_digits=19, decimal_places=4)
+    captured_amount = models.DecimalField(max_digits=19, decimal_places=4, default=0)
+    status = models.TextField(choices=Status.choices, default=Status.PENDING)
+    description = models.TextField(default='')
+    journal_entry = models.ForeignKey(
+        JournalEntry, null=True, on_delete=models.PROTECT, related_name='hold'
+    )
+    expires_at = models.DateTimeField()
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(default=timezone.now)
+    metadata = models.JSONField(default=dict)
+
+    class Meta:
+        managed = False
+        db_table = 'holds'
+        constraints = [
+            models.UniqueConstraint(fields=['tenant', 'id'], name='unique_tenant_hold'),
+            models.UniqueConstraint(fields=['tenant', 'reference_id'], name='unique_tenant_hold_reference'),
+        ]
