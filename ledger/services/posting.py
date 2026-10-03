@@ -17,6 +17,12 @@ from ledger.services.idempotency import get_or_insert_idempotency_key
 class PostingError(Exception):
     pass
 
+def _is_internal_entry(entry: JournalEntry) -> bool:
+    return bool(entry.metadata and entry.metadata.get("system"))
+
+def exclude_internal_lines(qs):
+    return qs.exclude(journal_entry__metadata__system__isnull=False)
+
 def retry_on_deadlock(max_retries=5, base_delay=0.1):
     def decorator(func):
         def wrapper(*args, **kwargs):
@@ -38,7 +44,7 @@ def retry_on_deadlock(max_retries=5, base_delay=0.1):
 
 @retry_on_deadlock(max_retries=3, base_delay=0.05)
 @transaction.atomic
-def post_entry(tenant, payload, idempotency_key: str, request_hash: bytes):
+def post_entry(tenant, payload, idempotency_key: str, request_hash: bytes, bypass_sharding: bool = False):
     """
     Core posting service that safely constructs a double-entry ledger write.
     """
@@ -91,8 +97,32 @@ def post_entry(tenant, payload, idempotency_key: str, request_hash: bytes):
     if net != 0:
         raise PostingError("unbalanced_entry")
     
+    # 3.5. Shard Routing
+    # Reversals are exempt from routing; they must use the exact account_id provided.
+    if not reverses_id and not bypass_sharding:
+        import uuid
+        requested_ids = list({line['account_id'] for line in lines_data})
+        # Dirty read to detect sharding
+        account_metas = Account.objects.filter(
+            tenant_id=tenant.id, id__in=requested_ids
+        ).values('id', 'shard_count')
+        
+        shard_map = {}
+        for meta in account_metas:
+            if meta['shard_count'] > 0:
+                master_id = meta['id']
+                shard_index = random.randint(0, meta['shard_count'] - 1)
+                shard_map[str(master_id)] = str(uuid.uuid5(master_id, f"shard_{shard_index}"))
+                
+        for line in lines_data:
+            orig_id = str(line['account_id'])
+            if orig_id in shard_map:
+                line['account_id'] = shard_map[orig_id]
+                # Keep track of original for logical mapping in outbox
+                line['logical_account_id'] = orig_id
+
     # 4. Deterministic Row Locking
-    account_ids = list({line['account_id'] for line in lines_data})
+    account_ids = list({str(line['account_id']) for line in lines_data})
     account_ids.sort() # Sort in ascending order to prevent deadlocks
     
     # Lock accounts
@@ -107,11 +137,13 @@ def post_entry(tenant, payload, idempotency_key: str, request_hash: bytes):
         raise PostingError("One or more accounts not found")
         
     # 5. Insert Journal Entry
+    metadata = payload.get('metadata', {})
     entry = JournalEntry.objects.create(
         tenant=tenant,
         reference_id=reference_id,
         description=description,
-        reverses_id=reverses_id
+        reverses_id=reverses_id,
+        metadata=metadata
     )
     
     # 6. Insert Lines & Update Balances
@@ -148,26 +180,43 @@ def post_entry(tenant, payload, idempotency_key: str, request_hash: bytes):
     Account.objects.bulk_update(accounts, ['balance', 'version'])
     
     # 7. Insert Outbox Event
-    event_type = "entry.reversed" if reverses_id else "entry.posted"
-    response_body = {
-        "id": str(entry.id),
-        "reference_id": entry.reference_id,
-        "description": entry.description,
-        "reverses_id": str(entry.reverses_id) if entry.reverses_id else None,
-        "lines": [
-            {
-                "account_id": str(line.account.id),
-                "direction": line.direction,
-                "amount": str(line.amount)
-            }
-            for line in lines_to_create
-        ]
-    }
-    OutboxEvent.objects.create(
-        tenant=tenant,
-        type=event_type,
-        payload=response_body
-    )
+    if not _is_internal_entry(entry):
+        event_type = "entry.reversed" if reverses_id else "entry.posted"
+        response_body = {
+            "id": str(entry.id),
+            "reference_id": entry.reference_id,
+            "description": entry.description,
+            "reverses_id": str(entry.reverses_id) if entry.reverses_id else None,
+            "lines": [
+                {
+                    "account_id": str(line.account.parent_account_id) if line.account.parent_account_id else str(line.account.id),
+                    "direction": line.direction,
+                    "amount": str(line.amount)
+                }
+                for line in lines_to_create
+            ]
+        }
+        OutboxEvent.objects.create(
+            tenant=tenant,
+            type=event_type,
+            payload=response_body
+        )
+    else:
+        # Build response_body anyway to return it, even though we don't emit an event
+        response_body = {
+            "id": str(entry.id),
+            "reference_id": entry.reference_id,
+            "description": entry.description,
+            "reverses_id": str(entry.reverses_id) if entry.reverses_id else None,
+            "lines": [
+                {
+                    "account_id": str(line.account.parent_account_id) if line.account.parent_account_id else str(line.account.id),
+                    "direction": line.direction,
+                    "amount": str(line.amount)
+                }
+                for line in lines_to_create
+            ]
+        }
     
     # 8. Record Idempotency Success
     IdempotencyKey.objects.filter(

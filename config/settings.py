@@ -158,5 +158,9 @@ CELERY_BEAT_SCHEDULE = {
     'expire-holds-every-minute': {
         'task': 'workers.tasks.expire_holds',
         'schedule': crontab(minute='*'),
+    },
+    'rollup-shards-every-minute': {
+        'task': 'workers.tasks.rollup_shards',
+        'schedule': crontab(minute='*'),
     }
 }

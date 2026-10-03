@@ -30,6 +30,10 @@ class Account(models.Model):
     balance = models.DecimalField(max_digits=19, decimal_places=4, default=0)
     allow_negative = models.BooleanField(default=False)
     version = models.BigIntegerField(default=0)
+    shard_count = models.IntegerField(default=0)
+    parent_account = models.ForeignKey(
+        'self', null=True, on_delete=models.PROTECT, related_name='shards', db_column='parent_account_id'
+    )
 
     class Meta:
         managed = False

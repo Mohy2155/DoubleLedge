@@ -60,7 +60,7 @@ The system SHALL enforce a per-tenant token bucket rate limit using Redis, degra
 - **THEN** the system fails open and allows the request to proceed
 
 ### Requirement: Account Balance Endpoint
-The system SHALL provide an HTTP API endpoint at `/api/v1/accounts/{id}/balance/` returning the account's current or point-in-time balance and metadata, and the core `/api/v1/accounts/{id}/` endpoint MUST return available and pending hold balances.
+The system SHALL provide an HTTP API endpoint at `/api/v1/accounts/{id}/balance/` returning the account's current or point-in-time balance and metadata, and the core `/api/v1/accounts/{id}/` endpoint MUST return available and pending hold balances. For sharded accounts, these endpoints MUST return the aggregate balance of the master account and all its shards.
 
 #### Scenario: Current balance query
 - **WHEN** a client sends a GET request to `/api/v1/accounts/{id}/balance/`
@@ -81,3 +81,7 @@ The system SHALL provide an HTTP API endpoint at `/api/v1/accounts/{id}/balance/
 #### Scenario: Extended account response with holds
 - **WHEN** a client requests account details from `/api/v1/accounts/{id}/`
 - **THEN** the response includes `posted_balance`, `pending_holds`, and `available_balance` as strict string decimals instead of a single `balance` field
+
+#### Scenario: Sharded account aggregate balance
+- **WHEN** a client requests account details for a sharded account
+- **THEN** the API transparently sums the balance of the master account and all its shards, returning the aggregate total
