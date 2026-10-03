@@ -127,7 +127,7 @@ def test_reversing_entry_emits_reversed_event(tenant, accounts):
     # Now reverse it
     reverse_payload = {
         "reference_id": "TX_REV",
-        "reverses_id": str(OutboxEvent.objects.first().payload["id"]),
+        "reverses_id": str(OutboxEvent.objects.filter(type="entry.posted").first().payload["id"]),
         "lines": [
             {"account_id": str(a1.id), "amount": "100.00", "direction": "DEBIT"},
             {"account_id": str(a2.id), "amount": "100.00", "direction": "CREDIT"}

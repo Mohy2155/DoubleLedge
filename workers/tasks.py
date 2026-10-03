@@ -194,3 +194,76 @@ def expire_holds():
             )
 
     for_each_tenant(run_for_tenant)
+
+ROLLUP_LOCK_ID = 827461928375
+
+@shared_task(ignore_result=True)
+def rollup_shards():
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT pg_try_advisory_lock(%s);", [ROLLUP_LOCK_ID])
+        lock_acquired = cursor.fetchone()[0]
+
+    if not lock_acquired:
+        return
+
+    try:
+        def run_for_tenant(tenant_id):
+            from ledger.models import Account, Tenant
+            from ledger.services.posting import post_entry, PostingError
+            import uuid
+            
+            tenant = Tenant(id=tenant_id)
+            
+            shards = list(Account.objects.filter(tenant_id=tenant_id, parent_account__isnull=False).exclude(balance=0))
+            
+            for shard in shards:
+                reference_id = f"rollup:{shard.id}:{shard.version}"
+                
+                if shard.type in ('ASSET', 'EXPENSE'):
+                    if shard.balance > 0:
+                        shard_dir = 'CREDIT'
+                        master_dir = 'DEBIT'
+                    else:
+                        shard_dir = 'DEBIT'
+                        master_dir = 'CREDIT'
+                else:
+                    if shard.balance > 0:
+                        shard_dir = 'DEBIT'
+                        master_dir = 'CREDIT'
+                    else:
+                        shard_dir = 'CREDIT'
+                        master_dir = 'DEBIT'
+                        
+                amount = abs(shard.balance)
+                
+                payload = {
+                    'reference_id': reference_id,
+                    'description': 'Automated shard rollup',
+                    'metadata': {'system': 'shard_rollup', 'shard_id': str(shard.id)},
+                    'lines': [
+                        {
+                            'account_id': str(shard.id),
+                            'amount': str(amount),
+                            'direction': shard_dir
+                        },
+                        {
+                            'account_id': str(shard.parent_account_id),
+                            'amount': str(amount),
+                            'direction': master_dir
+                        }
+                    ]
+                }
+                
+                import json, hashlib
+                idem_key = reference_id
+                req_hash = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).digest()
+                
+                try:
+                    post_entry(tenant, payload, idem_key, req_hash, bypass_sharding=True)
+                except PostingError as e:
+                    logger.error(f"Failed to rollup shard {shard.id}: {str(e)}")
+
+        for_each_tenant(run_for_tenant)
+    finally:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT pg_advisory_unlock(%s);", [ROLLUP_LOCK_ID])

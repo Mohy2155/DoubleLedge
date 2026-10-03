@@ -57,15 +57,9 @@ def authorize_hold(tenant, payload: dict, idempotency_key: str, request_hash: by
     if hold_amount <= 0:
         raise HoldError("invalid_amount")
 
-    pending_holds_total = Hold.objects.filter(
-        tenant_id=tenant.id,
-        account_id=account.id,
-        status='PENDING'
-    ).aggregate(
-        total=Sum(F('amount') - F('captured_amount'))
-    )['total'] or Decimal('0')
-
-    available = compute_available_balance(account, pending_holds_total)
+    from ledger.services.sharding import get_aggregate_balance
+    aggs = get_aggregate_balance(tenant.id, account.id)
+    available = aggs['available_balance']
 
     if available - hold_amount < 0 and not account.allow_negative:
         raise HoldError("insufficient_funds")

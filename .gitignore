@@ -36,3 +36,6 @@ dist/
 scratch/
 script_51.ps1
 context.txt
+
+# Antigravity / Agent custom skills
+.agents/

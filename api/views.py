@@ -52,6 +52,14 @@ class JournalEntryViewSet(viewsets.ViewSet):
     def retrieve(self, request, pk=None):
         tenant_id = request.user.id
         entry = get_object_or_404(JournalEntry.objects.prefetch_related('lines'), id=pk, tenant_id=tenant_id)
+        
+        from ledger.services.sharding import to_logical_account_id
+        import uuid
+        line_accounts = [line.account_id for line in entry.lines.all()]
+        mapping = to_logical_account_id(tenant_id, line_accounts)
+        for line in entry.lines.all():
+            line.account_id = uuid.UUID(mapping[str(line.account_id)])
+            
         serializer = JournalEntrySerializer(entry)
         return Response(serializer.data)
         
@@ -112,17 +120,17 @@ class AccountViewSet(viewsets.ViewSet):
         tenant_id = request.user.id
         account = get_object_or_404(Account, id=pk, tenant_id=tenant_id)
         
-        from ledger.models import Hold
-        from django.db.models import Sum, F
-        from decimal import Decimal
+        if account.parent_account_id is not None:
+            from django.http import Http404
+            raise Http404("No Account matches the given query.")
+            
+        from ledger.services.sharding import get_aggregate_balance
         
-        pending_total = Hold.objects.filter(
-            tenant_id=tenant_id, account_id=account.id, status='PENDING'
-        ).aggregate(total=Sum(F('amount') - F('captured_amount')))['total'] or Decimal('0')
+        aggs = get_aggregate_balance(tenant_id, account.id)
         
-        account.posted_balance = account.balance
-        account.pending_holds = pending_total
-        account.available_balance = account.balance - pending_total
+        account.posted_balance = aggs['posted_balance']
+        account.pending_holds = aggs['pending_holds']
+        account.available_balance = aggs['available_balance']
         
         serializer = AccountSerializer(account)
         return Response(serializer.data)
@@ -133,6 +141,10 @@ class AccountViewSet(viewsets.ViewSet):
         tenant_id = request.user.id
         account = get_object_or_404(Account, id=pk, tenant_id=tenant_id)
         
+        if account.parent_account_id is not None:
+            from django.http import Http404
+            raise Http404("No Account matches the given query.")
+            
         as_of_str = request.query_params.get('as_of')
         as_of = None
         if as_of_str:
@@ -143,11 +155,35 @@ class AccountViewSet(viewsets.ViewSet):
                 return Response({"error": {"code": "invalid", "message": "as_of must be timezone-aware"}}, status=400)
             
         from ledger.services.snapshots import BalanceQueryService
+        from ledger.services.sharding import resolve_member_ids
         from api.serializers import AccountBalanceSerializer
+        from decimal import Decimal
         
-        result = BalanceQueryService.get_account_balance(account, as_of=as_of)
+        member_ids = resolve_member_ids(tenant_id, account.id)
         
-        serializer = AccountBalanceSerializer(result)
+        total_balance = Decimal('0.0000')
+        total_debit = Decimal('0.0000')
+        total_credit = Decimal('0.0000')
+        snapshot_used = False
+        
+        for member_id in member_ids:
+            # We need the Account instance for BalanceQueryService
+            member_acc = Account.objects.get(tenant_id=tenant_id, id=member_id)
+            result = BalanceQueryService.get_account_balance(member_acc, as_of=as_of)
+            total_balance += Decimal(result['balance'])
+            total_debit += Decimal(result['debit_total'])
+            total_credit += Decimal(result['credit_total'])
+            if result.get('snapshot_used'):
+                snapshot_used = True
+                
+        aggregated_result = {
+            "balance": str(total_balance),
+            "debit_total": str(total_debit),
+            "credit_total": str(total_credit),
+            "snapshot_used": snapshot_used
+        }
+        
+        serializer = AccountBalanceSerializer(aggregated_result)
         return Response(serializer.data)
         
     @tenant_transaction()
@@ -156,17 +192,29 @@ class AccountViewSet(viewsets.ViewSet):
         tenant_id = request.user.id
         account = get_object_or_404(Account, id=pk, tenant_id=tenant_id)
         
+        if account.parent_account_id is not None:
+            from django.http import Http404
+            raise Http404("No Account matches the given query.")
+            
         limit = int(request.query_params.get('limit', 100))
         cursor_id = request.query_params.get('cursor')
         
-        lines_qs = TransactionLine.objects.filter(tenant_id=tenant_id, account=account).order_by('id')
+        from ledger.services.sharding import resolve_member_ids
+        from ledger.services.posting import exclude_internal_lines
+        member_ids = resolve_member_ids(tenant_id, account.id)
+        
+        lines_qs = TransactionLine.objects.filter(tenant_id=tenant_id, account_id__in=member_ids).order_by('id')
+        lines_qs = exclude_internal_lines(lines_qs)
+        
         if cursor_id:
             lines_qs = lines_qs.filter(id__gt=cursor_id)
             
         lines = list(lines_qs[:limit])
         
         if cursor_id:
-            prior_lines = TransactionLine.objects.filter(tenant_id=tenant_id, account=account, id__lte=cursor_id)
+            prior_lines = TransactionLine.objects.filter(tenant_id=tenant_id, account_id__in=member_ids, id__lte=cursor_id)
+            prior_lines = exclude_internal_lines(prior_lines)
+            
             debits = prior_lines.filter(direction='DEBIT').aggregate(total=Sum('amount'))['total'] or Decimal(0)
             credits = prior_lines.filter(direction='CREDIT').aggregate(total=Sum('amount'))['total'] or Decimal(0)
             
@@ -193,6 +241,7 @@ class AccountViewSet(viewsets.ViewSet):
             results.append({
                 "id": line.id,
                 "journal_entry_id": str(line.journal_entry_id),
+                "account_id": str(account.id), # logical mapping
                 "direction": line.direction,
                 "amount": str(line.amount),
                 "running_balance": str(running_balance)
