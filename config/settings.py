@@ -154,5 +154,9 @@ CELERY_BEAT_SCHEDULE = {
     'create-snapshots-every-minute': {
         'task': 'workers.tasks.create_account_balance_snapshots',
         'schedule': crontab(minute='*'),
+    },
+    'expire-holds-every-minute': {
+        'task': 'workers.tasks.expire_holds',
+        'schedule': crontab(minute='*'),
     }
 }

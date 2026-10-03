@@ -36,7 +36,10 @@ class AccountSerializer(serializers.Serializer):
     id = serializers.UUIDField(read_only=True)
     name = serializers.CharField(read_only=True)
     type = serializers.CharField(read_only=True)
-    balance = serializers.DecimalField(max_digits=19, decimal_places=4, read_only=True)
+    currency = serializers.CharField(read_only=True)
+    posted_balance = StrictStringDecimalField(max_digits=19, decimal_places=4, read_only=True)
+    pending_holds = StrictStringDecimalField(max_digits=19, decimal_places=4, read_only=True)
+    available_balance = StrictStringDecimalField(max_digits=19, decimal_places=4, read_only=True)
     version = serializers.IntegerField(read_only=True)
     created_at = serializers.DateTimeField(read_only=True)
 
@@ -82,7 +85,7 @@ class WebhookEndpointSerializer(serializers.Serializer):
     id = serializers.UUIDField(read_only=True)
     url = serializers.URLField(validators=[validate_webhook_url])
     event_types = serializers.ListField(
-        child=serializers.ChoiceField(choices=['entry.posted', 'entry.reversed']),
+        child=serializers.ChoiceField(choices=['entry.posted', 'entry.reversed', 'hold.authorized', 'hold.captured', 'hold.voided', 'hold.expired']),
         allow_empty=False
     )
     is_active = serializers.BooleanField(default=True)
@@ -98,3 +101,32 @@ class AccountBalanceSerializer(serializers.Serializer):
     debit_total = StrictStringDecimalField(max_digits=28, decimal_places=4, read_only=True)
     credit_total = StrictStringDecimalField(max_digits=28, decimal_places=4, read_only=True)
     snapshot_used = serializers.BooleanField(read_only=True)
+
+class HoldSerializer(serializers.Serializer):
+    id = serializers.UUIDField(read_only=True)
+    reference_id = serializers.CharField(read_only=True)
+    account_id = serializers.UUIDField(read_only=True)
+    amount = StrictStringDecimalField(max_digits=19, decimal_places=4, read_only=True)
+    captured_amount = StrictStringDecimalField(max_digits=19, decimal_places=4, read_only=True)
+    currency = serializers.CharField(read_only=True)
+    status = serializers.CharField(read_only=True)
+    description = serializers.CharField(read_only=True)
+    journal_entry_id = serializers.UUIDField(read_only=True, allow_null=True)
+    expires_at = serializers.DateTimeField(read_only=True)
+    created_at = serializers.DateTimeField(read_only=True)
+    metadata = serializers.JSONField(read_only=True)
+
+class HoldCreateSerializer(serializers.Serializer):
+    reference_id = serializers.CharField(max_length=255)
+    account_id = serializers.UUIDField()
+    amount = StrictStringDecimalField(max_digits=19, decimal_places=4)
+    currency = serializers.CharField(max_length=3)
+    description = serializers.CharField(max_length=255, required=False, default='')
+    expires_at = serializers.DateTimeField()
+    metadata = serializers.JSONField(required=False, default=dict)
+
+class HoldCaptureSerializer(serializers.Serializer):
+    amount = StrictStringDecimalField(max_digits=19, decimal_places=4, required=False)
+    destination_account_id = serializers.UUIDField()
+    reference_id = serializers.CharField(max_length=255)
+    description = serializers.CharField(max_length=255, required=False, default='')

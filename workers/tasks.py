@@ -160,3 +160,37 @@ def create_account_balance_snapshots():
             generate_account_snapshot(tenant_id, acc_id)
             
     for_each_tenant(run_for_tenant)
+
+@shared_task(ignore_result=True)
+def expire_holds():
+    def run_for_tenant(tenant_id):
+        from ledger.models import OutboxEvent
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE holds
+                SET status = 'EXPIRED', updated_at = now()
+                WHERE id IN (
+                    SELECT id FROM holds
+                    WHERE status = 'PENDING'
+                      AND expires_at <= now()
+                    ORDER BY expires_at
+                    LIMIT 500
+                    FOR UPDATE SKIP LOCKED
+                )
+                RETURNING id, tenant_id, account_id, amount, reference_id
+            """)
+            expired_rows = cursor.fetchall()
+
+        for row in expired_rows:
+            OutboxEvent.objects.create(
+                tenant_id=row[1],
+                type="hold.expired",
+                payload={
+                    "hold_id": str(row[0]),
+                    "account_id": str(row[2]),
+                    "amount": str(row[3]),
+                    "reference_id": row[4],
+                }
+            )
+
+    for_each_tenant(run_for_tenant)

@@ -111,6 +111,19 @@ class AccountViewSet(viewsets.ViewSet):
     def retrieve(self, request, pk=None):
         tenant_id = request.user.id
         account = get_object_or_404(Account, id=pk, tenant_id=tenant_id)
+        
+        from ledger.models import Hold
+        from django.db.models import Sum, F
+        from decimal import Decimal
+        
+        pending_total = Hold.objects.filter(
+            tenant_id=tenant_id, account_id=account.id, status='PENDING'
+        ).aggregate(total=Sum(F('amount') - F('captured_amount')))['total'] or Decimal('0')
+        
+        account.posted_balance = account.balance
+        account.pending_holds = pending_total
+        account.available_balance = account.balance - pending_total
+        
         serializer = AccountSerializer(account)
         return Response(serializer.data)
         
@@ -261,3 +274,75 @@ class WebhookEndpointViewSet(viewsets.ViewSet):
         endpoint = get_object_or_404(WebhookEndpoint, tenant_id=tenant_id, pk=pk)
         endpoint.delete()
         return Response(status=204)
+
+from ledger.services.holds import authorize_hold, capture_hold, void_hold
+from ledger.models import Hold
+from api.serializers import HoldSerializer, HoldCreateSerializer, HoldCaptureSerializer
+
+class HoldViewSet(viewsets.ViewSet):
+    
+    @tenant_transaction()
+    def create(self, request):
+        idempotency_key = request.META.get('HTTP_IDEMPOTENCY_KEY')
+        if not idempotency_key:
+            raise MissingIdempotencyKey()
+            
+        serializer = HoldCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        request_hash = generate_idempotency_hash(request.method, request.path, request.body)
+        tenant = Tenant(id=request.user.id)
+        
+        code, body, is_replayed = authorize_hold(tenant, serializer.validated_data, idempotency_key, request_hash)
+            
+        headers = {}
+        if is_replayed:
+            headers['Idempotent-Replayed'] = 'true'
+            
+        return Response(body, status=code, headers=headers)
+        
+    @tenant_transaction()
+    def retrieve(self, request, pk=None):
+        tenant_id = request.user.id
+        hold = get_object_or_404(Hold, id=pk, tenant_id=tenant_id)
+        serializer = HoldSerializer(hold)
+        return Response(serializer.data)
+        
+    @tenant_transaction()
+    @action(detail=True, methods=['post'])
+    def capture(self, request, pk=None):
+        idempotency_key = request.META.get('HTTP_IDEMPOTENCY_KEY')
+        if not idempotency_key:
+            raise MissingIdempotencyKey()
+            
+        serializer = HoldCaptureSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        request_hash = generate_idempotency_hash(request.method, request.path, request.body)
+        tenant = Tenant(id=request.user.id)
+        
+        code, body, is_replayed = capture_hold(tenant, pk, serializer.validated_data, idempotency_key, request_hash)
+            
+        headers = {}
+        if is_replayed:
+            headers['Idempotent-Replayed'] = 'true'
+            
+        return Response(body, status=code, headers=headers)
+        
+    @tenant_transaction()
+    @action(detail=True, methods=['post'])
+    def void(self, request, pk=None):
+        idempotency_key = request.META.get('HTTP_IDEMPOTENCY_KEY')
+        if not idempotency_key:
+            raise MissingIdempotencyKey()
+            
+        request_hash = generate_idempotency_hash(request.method, request.path, request.body)
+        tenant = Tenant(id=request.user.id)
+        
+        code, body, is_replayed = void_hold(tenant, pk, idempotency_key, request_hash)
+            
+        headers = {}
+        if is_replayed:
+            headers['Idempotent-Replayed'] = 'true'
+            
+        return Response(body, status=code, headers=headers)

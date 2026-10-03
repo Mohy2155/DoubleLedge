@@ -11,6 +11,24 @@ def custom_exception_handler(exc, context):
     response = exception_handler(exc, context)
 
     if response is None:
+        from ledger.services.holds import HoldError
+        if isinstance(exc, HoldError):
+            message = str(exc)
+            error_mapping = {
+                "idempotency_key_reuse": (422, "idempotency_key_reuse"),
+                "account_not_found": (404, "not_found"),
+                "currency_mismatch": (422, "currency_mismatch"),
+                "invalid_expiry": (422, "invalid_expiry"),
+                "invalid_amount": (422, "invalid_amount"),
+                "invalid_amount_format": (422, "invalid_amount_format"),
+                "insufficient_funds": (422, "insufficient_funds"),
+                "hold_not_found": (404, "not_found"),
+                "hold_not_pending": (409, "hold_not_pending"),
+                "capture_exceeds_hold": (422, "capture_exceeds_hold"),
+            }
+            status_code, code = error_mapping.get(message, (422, "unprocessable_entity"))
+            return Response({"error": {"code": code, "message": message}}, status=status_code)
+            
         if isinstance(exc, PostingError):
             message = str(exc)
             

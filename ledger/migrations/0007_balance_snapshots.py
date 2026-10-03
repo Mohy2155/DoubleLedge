@@ -1,7 +1,8 @@
 # Generated manually
 
-from django.db import migrations
-
+from django.db import migrations, models
+import django.utils.timezone
+import uuid
 
 class Migration(migrations.Migration):
 
@@ -45,5 +46,22 @@ class Migration(migrations.Migration):
             DROP TABLE IF EXISTS balance_snapshots CASCADE;
             ALTER TABLE journal_entries DROP COLUMN IF EXISTS sequence;
             """
-        )
+        ),
+        migrations.CreateModel(
+            name='BalanceSnapshot',
+            fields=[
+                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                ('sequence', models.BigIntegerField()),
+                ('balance', models.DecimalField(decimal_places=4, max_digits=28)),
+                ('debit_total', models.DecimalField(decimal_places=4, max_digits=28)),
+                ('credit_total', models.DecimalField(decimal_places=4, max_digits=28)),
+                ('line_count', models.BigIntegerField()),
+                ('max_posted_at', models.DateTimeField()),
+                ('created_at', models.DateTimeField(default=django.utils.timezone.now)),
+            ],
+            options={
+                'db_table': 'balance_snapshots',
+                'managed': False,
+            },
+        ),
     ]
