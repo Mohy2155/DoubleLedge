@@ -116,6 +116,27 @@ class JournalEntryViewSet(viewsets.ViewSet):
 class AccountViewSet(viewsets.ViewSet):
     
     @tenant_transaction()
+    def list(self, request):
+        tenant_id = request.user.id
+        from ledger.services.sharding import get_aggregate_balance
+
+        accounts = Account.objects.filter(
+            tenant_id=tenant_id,
+            parent_account_id__isnull=True
+        ).order_by('name')[:100]
+
+        results = []
+        for account in accounts:
+            aggs = get_aggregate_balance(tenant_id, account.id)
+            account.posted_balance = aggs['posted_balance']
+            account.pending_holds = aggs['pending_holds']
+            account.available_balance = aggs['available_balance']
+            results.append(account)
+
+        serializer = AccountSerializer(results, many=True)
+        return Response(serializer.data)
+
+    @tenant_transaction()
     def retrieve(self, request, pk=None):
         tenant_id = request.user.id
         account = get_object_or_404(Account, id=pk, tenant_id=tenant_id)
@@ -330,6 +351,19 @@ from api.serializers import HoldSerializer, HoldCreateSerializer, HoldCaptureSer
 
 class HoldViewSet(viewsets.ViewSet):
     
+    @tenant_transaction()
+    def list(self, request):
+        tenant_id = request.user.id
+        status_filter = request.query_params.get('status')
+
+        qs = Hold.objects.filter(tenant_id=tenant_id)
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        holds = qs.order_by('-created_at')[:100]
+
+        serializer = HoldSerializer(holds, many=True)
+        return Response(serializer.data)
+
     @tenant_transaction()
     def create(self, request):
         idempotency_key = request.META.get('HTTP_IDEMPOTENCY_KEY')

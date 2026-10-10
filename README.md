@@ -451,6 +451,11 @@ curl -H "Authorization: Bearer <TOKEN>" http://localhost:8000/api/v1/accounts/<A
 
 # 4. Retrieve the seeded hold status
 curl -H "Authorization: Bearer <TOKEN>" http://localhost:8000/api/v1/holds/<HOLD_ID>/
+
+# 5. Open the Demo UI
+# Open http://localhost:8000/demo/ in your browser and paste the dev JWT token.
+# To generate a new token for an existing tenant without re-creating:
+# docker compose run --rm -e DB_USER=postgres -e DB_PASSWORD=postgres -e REQUIRE_RESTRICTED_DB_ROLE=0 api python manage.py create_tenant --tenant_id=<TENANT_ID>
 ```
 
 Other commands:
