@@ -6,6 +6,11 @@ from django.contrib.postgres.fields import ArrayField
 
 
 class Tenant(models.Model):
+    """
+    Represents a tenant.
+    Note: Tenant creation under RLS requires a client-generated UUID and setting `app.tenant_id`
+    before INSERT. In test fixtures, `Tenant.objects.create` must run under `RESET ROLE`.
+    """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.TextField()
 

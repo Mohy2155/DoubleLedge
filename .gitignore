@@ -37,5 +37,8 @@ scratch/
 script_51.ps1
 context.txt
 
+# Celery Beat runtime schedule
+celerybeat-schedule*
+
 # Antigravity / Agent custom skills
 .agents/

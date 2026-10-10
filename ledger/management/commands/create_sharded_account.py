@@ -25,6 +25,10 @@ class Command(BaseCommand):
         if shard_count < 0 or shard_count > 64:
             raise CommandError("shard_count must be between 0 and 64")
 
+        from django.db import connection
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT set_config('app.tenant_id', %s, true)", [str(tenant_id)])
+
         try:
             Tenant.objects.get(id=tenant_id)
         except Tenant.DoesNotExist:

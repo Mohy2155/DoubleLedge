@@ -5,27 +5,38 @@ from ledger.models import Tenant, Account, ReconciliationReport
 from ledger.services.reconciliation import check_tenant_ledger_integrity
 from ledger.services.posting import post_entry
 
-@pytest.mark.django_db
+pytestmark = pytest.mark.runtime_role
+
+
+@pytest.mark.django_db(transaction=True)
 def test_reconciliation_detects_drift():
     # 1. Setup tenant and accounts
-    tenant = Tenant.objects.create(name="Test Tenant")
-    
-    asset = Account.objects.create(
-        tenant=tenant, 
-        name="Cash", 
-        type=Account.Type.ASSET, 
-        currency="USD", 
-        balance=Decimal("0.0000")
-    )
-    revenue = Account.objects.create(
-        tenant=tenant, 
-        name="Sales", 
-        type=Account.Type.REVENUE, 
-        currency="USD", 
-        balance=Decimal("0.0000")
-    )
+    with connection.cursor() as c:
+        c.execute('RESET ROLE;')
+    try:
+        tenant = Tenant.objects.create(name="Test Tenant")
+        
+        asset = Account.objects.create(
+            tenant=tenant, 
+            name="Cash", 
+            type=Account.Type.ASSET, 
+            currency="USD", 
+            balance=Decimal("0.0000")
+        )
+        revenue = Account.objects.create(
+            tenant=tenant, 
+            name="Sales", 
+            type=Account.Type.REVENUE, 
+            currency="USD", 
+            balance=Decimal("0.0000")
+        )
+    finally:
+        with connection.cursor() as c:
+            c.execute('SET ROLE ledger_runtime;')
 
     # 2. Post a valid entry to give them some balance
+    with connection.cursor() as c:
+        c.execute("SELECT set_config('app.tenant_id', %s, false);", [str(tenant.id)])
     post_entry(
         tenant=tenant, 
         payload={
@@ -49,7 +60,13 @@ def test_reconciliation_detects_drift():
     # 3. Simulate out-of-band balance mutation (drift)
     # We must do this via raw SQL or ORM update without creating transaction lines.
     # We'll use ORM update which bypasses the ledger logic but mutates the table.
-    Account.objects.filter(id=asset.id).update(balance=Decimal("150.0000"))
+    with connection.cursor() as c:
+        c.execute('RESET ROLE;')
+    try:
+        Account.objects.filter(id=asset.id).update(balance=Decimal("150.0000"))
+    finally:
+        with connection.cursor() as c:
+            c.execute('SET ROLE ledger_runtime;')
 
     # 4. Run reconciliation
     report2 = check_tenant_ledger_integrity(tenant.id)

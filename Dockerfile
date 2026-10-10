@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install python dependencies
 COPY pyproject.toml .
 RUN pip install --upgrade pip && \
-    pip install .
+    pip install ".[dev]"
 
 COPY . .
 

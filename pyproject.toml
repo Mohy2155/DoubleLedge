@@ -28,6 +28,7 @@ dev = [
     "ruff",
     "mypy",
     "responses",
+    "freezegun",
 ]
 
 [tool.ruff]

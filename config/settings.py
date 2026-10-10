@@ -3,10 +3,21 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+DEBUG = os.environ.get('DEBUG') == 'True'
 SECRET_KEY = os.environ.get('SECRET_KEY', 'unsafe-default-key')
-JWT_PUBLIC_KEY = os.environ.get('JWT_PUBLIC_KEY', 'unsafe-jwt-public-key')
+if not DEBUG and SECRET_KEY == 'unsafe-default-key':
+    raise RuntimeError("SECRET_KEY must be set in production (when DEBUG is False).")
+
+JWT_PUBLIC_KEY_RAW = os.environ.get('JWT_PUBLIC_KEY', 'unsafe-jwt-public-key')
+if os.path.exists(JWT_PUBLIC_KEY_RAW):
+    with open(JWT_PUBLIC_KEY_RAW, 'r') as f:
+        JWT_PUBLIC_KEY = f.read()
+elif '\\n' in JWT_PUBLIC_KEY_RAW:
+    JWT_PUBLIC_KEY = JWT_PUBLIC_KEY_RAW.replace('\\n', '\n')
+else:
+    JWT_PUBLIC_KEY = JWT_PUBLIC_KEY_RAW
+
 REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
-DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 ALLOWED_HOSTS = ['*']
 
 # Allow plain HTTP webhook dispatch in test/dev environments.
@@ -63,8 +74,8 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': os.environ.get('DB_NAME', 'doubleledge'),
-        'USER': os.environ.get('DB_USER', 'postgres'),
-        'PASSWORD': os.environ.get('DB_PASSWORD', 'postgres'),
+        'USER': os.environ['DB_USER'],
+        'PASSWORD': os.environ['DB_PASSWORD'],
         'HOST': os.environ.get('DB_HOST', 'localhost'),
         'PORT': os.environ.get('DB_PORT', '5432'),
     }

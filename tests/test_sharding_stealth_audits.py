@@ -48,7 +48,7 @@ def test_forged_metadata_injection_attack(api_client, edge_tenant):
         assert not entry.metadata or 'system' not in entry.metadata, "SEVERE SECURITY VULNERABILITY: Forged metadata saved to DB!"
         
         # Ensure OutboxEvent was created (not silenced by forged metadata)
-        assert OutboxEvent.objects.filter(type="entry.posted").count() == 1
+        assert OutboxEvent.objects.filter(tenant=edge_tenant, type="entry.posted").count() == 1
     else:
         # Rejected (400 Bad Request) is also an acceptable mitigation
         assert response.status_code == 400

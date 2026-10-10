@@ -4,9 +4,12 @@ services:
     environment:
       POSTGRES_DB: doubleledge
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      LEDGER_RUNTIME_PASSWORD: ${LEDGER_RUNTIME_PASSWORD:?set LEDGER_RUNTIME_PASSWORD in .env}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - ./db-init:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d doubleledge"]
       interval: 5s
@@ -23,6 +26,23 @@ services:
       timeout: 5s
       retries: 5
 
+  migrate:
+    build: .
+    command: python manage.py migrate --noinput
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    environment:
+      DB_HOST: db
+      DB_USER: postgres
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+    depends_on:
+      db:
+        condition: service_healthy
+
   api:
     build: .
     command: python manage.py runserver 0.0.0.0:8000
@@ -34,6 +54,10 @@ services:
       - .env
     environment:
       DB_HOST: db
+      DB_USER: ledger_runtime
+      DB_PASSWORD: ${LEDGER_RUNTIME_PASSWORD:?set LEDGER_RUNTIME_PASSWORD in .env}
+      REQUIRE_RESTRICTED_DB_ROLE: "1"
+      JWT_PUBLIC_KEY: /app/scratch/pub.pem
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/1
     depends_on:
@@ -41,6 +65,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   celery_worker:
     build: .
@@ -51,6 +77,9 @@ services:
       - .env
     environment:
       DB_HOST: db
+      DB_USER: ledger_runtime
+      DB_PASSWORD: ${LEDGER_RUNTIME_PASSWORD:?set LEDGER_RUNTIME_PASSWORD in .env}
+      REQUIRE_RESTRICTED_DB_ROLE: "1"
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/1
     depends_on:
@@ -58,6 +87,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   celery_beat:
     build: .
@@ -68,6 +99,9 @@ services:
       - .env
     environment:
       DB_HOST: db
+      DB_USER: ledger_runtime
+      DB_PASSWORD: ${LEDGER_RUNTIME_PASSWORD:?set LEDGER_RUNTIME_PASSWORD in .env}
+      REQUIRE_RESTRICTED_DB_ROLE: "1"
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/1
     depends_on:
@@ -75,3 +109,5 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully

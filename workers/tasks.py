@@ -65,10 +65,10 @@ def dispatch_webhooks():
 
     # Step 2: Claim and dispatch — done *outside* for_each_tenant so each
     # claim+HTTP+record cycle has its own tight transaction boundary.
-    from ledger.models import Tenant
+    from ledger.services.tenancy import list_tenant_ids
     from django.db import connection, transaction
 
-    tenant_ids = list(Tenant.objects.values_list('id', flat=True))
+    tenant_ids = list_tenant_ids()
 
     for tenant_id in tenant_ids:
         try:
@@ -267,3 +267,15 @@ def rollup_shards():
     finally:
         with connection.cursor() as cursor:
             cursor.execute("SELECT pg_advisory_unlock(%s);", [ROLLUP_LOCK_ID])
+
+@shared_task
+def sweep_canary():
+    stats = for_each_tenant(lambda t: None)
+    alert = False
+    if stats['processed'] == 0:
+        logger.error("Sweep canary alert: processed==0. Tenant enumeration is failing or silent no-op!")
+        alert = True
+    if stats['failed'] > 0:
+        logger.error(f"Sweep canary alert: failed>0 ({stats['failed']}).")
+        alert = True
+    return {"alert": alert, **stats}

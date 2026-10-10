@@ -465,6 +465,12 @@ Each invariant in the table at the top has at least one test that tries to break
 
 **CI:** GitHub Actions runs Ruff, Black, mypy (strict on money-handling modules), the custom float-ban check, then the full suite against a real Postgres 16 service container.
 
+### Database Roles & Test Isolation
+
+* **Runtime vs Migration Roles:** The API and Celery workers connect as `ledger_runtime` (a restricted role without superuser or `BYPASSRLS`). Migrations run via a dedicated migration step as `postgres`. A startup guard rejects startup if the default runtime connection is superuser/`BYPASSRLS`.
+* **RLS Test Markers:** Standard functional, unit, and invariant tests run under the test database owner (`postgres`). Tests specifically verifying RLS policies, role boundaries, and cross-tenant leakage are marked with `@pytest.mark.runtime_role` to execute under `SET ROLE ledger_runtime`.
+* **Tenant Creation Monkeypatch (`tests/conftest.py`):** `Tenant.objects.create` is globally monkeypatched at import time to execute under `RESET ROLE` and restore the active role in a `finally` block. Because `tenants` is an administrative table protected by RLS and not writable by `ledger_runtime`, test fixture provisioning requires elevating to the database owner.
+
 ---
 
 ## Benchmarks
@@ -494,6 +500,30 @@ The hot-account row is intentionally included: it shows the honest ceiling of ro
 
 ---
 
+## Known Gaps & Future Hardening
+
+* **Foreign Keys:**
+  * Single-column FKs: `balance_snapshots.account_id`, `balance_snapshots.entry_id`, `journal_entries.reverses_id`
+  * No FKs at all on `outbox_events`, `idempotency_keys`, `ledger_checkpoints`
+* **Sharding Constraints:**
+  * No `shard_count` immutability trigger, and no shard-side `allow_negative` CHECK
+* **Holds Invariant:**
+  * Hold invariant (option 1: `held_amount` plus a DB CHECK), `released_amount` in void/expire webhook payloads
+* **Idempotency Race:**
+  * Idempotency race: one journal entry but a 200 balance delta, still unexplained
+* **Database Roles & Permissions:**
+  * Default privileges: tables created by migrations after 0012 do not automatically inherit `ledger_runtime` grants unless `ALTER DEFAULT PRIVILEGES` is configured or each new migration adds grants
+  * Sequences: granted `USAGE, SELECT` (no `UPDATE` to prevent `setval` sequence resets)
+  * Immutability assertion: add CI test checking `has_table_privilege('ledger_runtime', 'journal_entries', 'UPDATE')` returns false
+  * Role inspection in apps.py: currently runs on ready() check; idiomatic refactor to register as a Django system check (`manage.py check --deploy`)
+* **Test Isolation & Roles:**
+  * Red-team tests are unreviewed, so they stay on a separate branch until converted to `xfail(strict=True)`
+  * Most tests run as the owner (`postgres`), and only the RLS/role-specific tests run as `ledger_runtime`
+  * Concurrency tests run as the DB owner (`postgres`) to avoid fixture setup failures under session-level `SET ROLE`
+  * Central `Tenant.objects.create` monkeypatch in `tests/conftest.py` temporarily resets role to owner during tenant provisioning so fixtures can set up records safely
+
+---
+
 ## Roadmap
 
 * **Holds / two-phase postings:** authorize → capture/release, with `available_balance = balance − active holds`
@@ -519,6 +549,4 @@ doubleledge/
 └── docker-compose.yml
 ```
 
-## License
 
-MIT
