@@ -4,7 +4,14 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.environ.get('SECRET_KEY', 'unsafe-default-key')
-JWT_PUBLIC_KEY = os.environ.get('JWT_PUBLIC_KEY', 'unsafe-jwt-public-key')
+JWT_PUBLIC_KEY_RAW = os.environ.get('JWT_PUBLIC_KEY', 'unsafe-jwt-public-key')
+if os.path.exists(JWT_PUBLIC_KEY_RAW):
+    with open(JWT_PUBLIC_KEY_RAW, 'r') as f:
+        JWT_PUBLIC_KEY = f.read()
+elif isinstance(JWT_PUBLIC_KEY_RAW, str) and '\\n' in JWT_PUBLIC_KEY_RAW:
+    JWT_PUBLIC_KEY = JWT_PUBLIC_KEY_RAW.replace('\\n', '\n')
+else:
+    JWT_PUBLIC_KEY = JWT_PUBLIC_KEY_RAW
 REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
 DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 ALLOWED_HOSTS = ['*']

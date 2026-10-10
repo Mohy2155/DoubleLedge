@@ -113,6 +113,13 @@ def run_global_reconciliation():
     Loops over all tenants and performs isolated RLS audits on each.
     """
     reports = []
-    for tenant in Tenant.objects.all():
-        reports.append(check_tenant_ledger_integrity(tenant.id))
+    
+    from ledger.services.tenancy import for_each_tenant
+    def run_for_tenant(tenant_id):
+        reports.append(check_tenant_ledger_integrity(tenant_id))
+        
+    stats = for_each_tenant(run_for_tenant)
+    if stats['processed'] == 0:
+        logger.error("Global reconciliation alert: processed==0. Silent no-op detected!")
+        
     return reports

@@ -9,13 +9,23 @@ def get_current_tenant():
         cursor.execute("SELECT current_setting('app.tenant_id', true)")
         return cursor.fetchone()[0]
 
+def list_tenant_ids():
+    """
+    Returns all tenant IDs via the SECURITY DEFINER function public.list_tenant_ids().
+    """
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT id FROM public.list_tenant_ids();")
+        return [row[0] for row in cursor.fetchall()]
+
 def for_each_tenant(func):
     """
     Executes the given function for every tenant in the system.
     For each tenant, it opens a new transaction, sets the app.tenant_id config,
     and calls func(tenant_id).
+    Returns a dict with the results: {'listed': int, 'processed': int, 'failed': int}
     """
-    tenants = Tenant.objects.all().values_list('id', flat=True)
+    tenants = list_tenant_ids()
+    stats = {'listed': len(tenants), 'processed': 0, 'failed': 0}
     
     for tenant_id in tenants:
         try:
@@ -23,8 +33,12 @@ def for_each_tenant(func):
                 with connection.cursor() as cursor:
                     cursor.execute("SELECT set_config('app.tenant_id', %s, true)", [str(tenant_id)])
                 func(tenant_id)
+            stats['processed'] += 1
         except Exception as e:
             logger.exception(f"Error processing tenant {tenant_id} in for_each_tenant loop: {e}")
+            stats['failed'] += 1
+            
+    return stats
 
 def require_tenant_context():
     tenant_id = get_current_tenant()

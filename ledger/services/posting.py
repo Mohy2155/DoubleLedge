@@ -42,7 +42,7 @@ def retry_on_deadlock(max_retries=5, base_delay=0.1):
         return wrapper
     return decorator
 
-@retry_on_deadlock(max_retries=3, base_delay=0.05)
+@retry_on_deadlock(max_retries=5, base_delay=0.1)
 @transaction.atomic
 def post_entry(tenant, payload, idempotency_key: str, request_hash: bytes, bypass_sharding: bool = False):
     """
