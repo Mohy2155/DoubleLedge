@@ -502,9 +502,9 @@ Reproduce with `make bench`.
 
 | Scenario | Concurrency | Throughput | p50 | p99 | Balance drift |
 | --- | --- | --- | --- | --- | --- |
-| Spread across 10k accounts | _ | _ tx/s | _ ms | _ ms | 0 |
-| 100 accounts | _ | _ tx/s | _ ms | _ ms | 0 |
-| Single hot account (worst case) | _ | _ tx/s | _ ms | _ ms | 0 |
+| Spread across 10k accounts | 16 | 80.0 tx/s | 193.9 ms | 311.3 ms | 0 |
+| 100 accounts | 16 | 73.8 tx/s | 209.1 ms | 306.3 ms | 0 |
+| Single hot account (worst case) | 16 | 70.3 tx/s | 268.0 ms | 460.3 ms | 0 |
 
 The hot-account row is intentionally included: it shows the honest ceiling of row-lock serialization and motivates the sharding item in the roadmap.
 
