@@ -5,6 +5,8 @@ services:
       POSTGRES_DB: doubleledge
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+      LEDGER_RUNTIME_PASSWORD: ${LEDGER_RUNTIME_PASSWORD:-app_password}
+
     ports:
       - "5432:5432"
     volumes:
