@@ -42,3 +42,4 @@ celerybeat-schedule*
 
 # Antigravity / Agent custom skills
 .agents/
+HANDOVER.md
