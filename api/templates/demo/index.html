@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DoubleLedge Demo</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; background: #f8fafc; color: #0f172a; }
+    h1, h2, h3 { margin-top: 0; }
+    .card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    input, select, textarea, button { font-size: 14px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box; }
+    button { background: #2563eb; color: #ffffff; border: none; cursor: pointer; font-weight: 500; }
+    button:hover { background: #1d4ed8; }
+    button.secondary { background: #64748b; }
+    button.secondary:hover { background: #475569; }
+    button.danger { background: #dc2626; }
+    button.danger:hover { background: #b91c1c; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 14px; }
+    th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #e2e8f0; }
+    th { background: #f1f5f9; }
+    .row { display: flex; gap: 16px; flex-wrap: wrap; }
+    .col { flex: 1; min-width: 300px; }
+    .form-group { margin-bottom: 12px; }
+    .form-group label { display: block; font-weight: 600; margin-bottom: 4px; font-size: 13px; }
+    .form-group input, .form-group select { width: 100%; }
+    .error { background: #fef2f2; border: 1px solid #f87171; color: #991b1b; padding: 10px; border-radius: 4px; margin-bottom: 12px; display: none; word-break: break-all; white-space: pre-wrap; font-family: monospace; font-size: 13px; }
+    .success { background: #f0fdf4; border: 1px solid #4ade80; color: #166534; padding: 10px; border-radius: 4px; margin-bottom: 12px; display: none; word-break: break-all; font-size: 13px; }
+    .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+    .badge-PENDING { background: #fef3c7; color: #92400e; }
+    .badge-CAPTURED { background: #dcfce7; color: #166534; }
+    .badge-VOIDED { background: #fee2e2; color: #991b1b; }
+  </style>
+</head>
+<body>
+  <h1>DoubleLedge Demo UI</h1>
+  <div id="error-box" class="error"></div>
+  <div id="success-box" class="success"></div>
+
+  <div class="card">
+    <div class="form-group" style="margin-bottom: 0;">
+      <label for="jwt-token">Dev JWT Token (kept in memory only):</label>
+      <div style="display: flex; gap: 8px;">
+        <input type="password" id="jwt-token" placeholder="Paste dev JWT token here..." style="flex: 1;" />
+        <button id="btn-set-token">Load Data</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col">
+      <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <h2>Accounts</h2>
+          <button class="secondary" id="btn-refresh-accounts">Refresh</button>
+        </div>
+        <table id="tbl-accounts">
+          <thead>
+            <tr><th>Name</th><th>Type</th><th>Posted</th><th>Available</th><th>Action</th></tr>
+          </thead>
+          <tbody><tr><td colspan="5" style="text-align: center; color: #64748b;">Load token to view accounts</td></tr></tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h2>Transfer Form (Journal Entry)</h2>
+        <div class="form-group">
+          <label>From Account (Credit):</label>
+          <select id="tf-from"></select>
+        </div>
+        <div class="form-group">
+          <label>To Account (Debit):</label>
+          <select id="tf-to"></select>
+        </div>
+        <div class="form-group">
+          <label>Amount (USD):</label>
+          <input type="text" id="tf-amount" placeholder="e.g. 50.0000" />
+        </div>
+        <div class="form-group">
+          <label>Description:</label>
+          <input type="text" id="tf-desc" placeholder="e.g. Demo transfer" value="Demo transfer" />
+        </div>
+        <button id="btn-post-transfer">Post Transfer</button>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <h2>Statement</h2>
+          <span id="stmt-acc-name" style="font-size: 13px; color: #64748b;">Select an account</span>
+        </div>
+        <table id="tbl-statement">
+          <thead>
+            <tr><th>ID</th><th>Direction</th><th>Amount</th><th>Running Balance</th></tr>
+          </thead>
+          <tbody><tr><td colspan="4" style="text-align: center; color: #64748b;">No account selected</td></tr></tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <h2>Holds</h2>
+          <div>
+            <select id="holds-filter-status" style="font-size: 12px; padding: 4px;">
+              <option value="">All Statuses</option>
+              <option value="PENDING">PENDING</option>
+              <option value="CAPTURED">CAPTURED</option>
+              <option value="VOIDED">VOIDED</option>
+            </select>
+            <button class="secondary" id="btn-refresh-holds" style="padding: 4px 8px; font-size: 12px;">Refresh</button>
+          </div>
+        </div>
+
+        <div style="background: #f8fafc; padding: 10px; border: 1px solid #e2e8f0; border-radius: 4px; margin: 10px 0;">
+          <h3 style="font-size: 14px; margin-bottom: 8px;">Authorize New Hold</h3>
+          <div class="form-group">
+            <label>Account:</label>
+            <select id="hold-acc"></select>
+          </div>
+          <div class="form-group">
+            <label>Amount (USD):</label>
+            <input type="text" id="hold-amount" placeholder="e.g. 25.0000" />
+          </div>
+          <button id="btn-auth-hold" style="padding: 6px 12px;">Authorize Hold</button>
+        </div>
+
+        <table id="tbl-holds">
+          <thead>
+            <tr><th>ID / Description</th><th>Amount</th><th>Status</th><th>Actions</th></tr>
+          </thead>
+          <tbody><tr><td colspan="4" style="text-align: center; color: #64748b;">Load token to view holds</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let token = '';
+    let accountsList = [];
+    let selectedAccountId = null;
+
+    const el = id => document.getElementById(id);
+    const showError = msg => {
+      const box = el('error-box');
+      box.textContent = typeof msg === 'object' ? JSON.stringify(msg, null, 2) : msg;
+      box.style.display = 'block';
+      el('success-box').style.display = 'none';
+    };
+    const showSuccess = msg => {
+      const box = el('success-box');
+      box.textContent = msg;
+      box.style.display = 'block';
+      el('error-box').style.display = 'none';
+    };
+    const clearAlerts = () => {
+      el('error-box').style.display = 'none';
+      el('success-box').style.display = 'none';
+    };
+
+    const apiFetch = async (endpoint, options = {}) => {
+      if (!token) throw new Error('Dev JWT token is required');
+      const headers = { 'Authorization': `Bearer ${token}`, ...(options.headers || {}) };
+      const res = await fetch(endpoint, { ...options, headers });
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); } catch (e) { data = text; }
+      if (!res.ok) {
+        throw data || { status: res.status, statusText: res.statusText };
+      }
+      return data;
+    };
+
+    const loadAccounts = async () => {
+      clearAlerts();
+      try {
+        const data = await apiFetch('/api/v1/accounts/');
+        accountsList = data;
+        renderAccounts();
+        updateAccountDropdowns();
+      } catch (err) { showError(err); }
+    };
+
+    const renderAccounts = () => {
+      const tbody = el('tbl-accounts').querySelector('tbody');
+      if (!accountsList.length) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">No accounts found</td></tr>';
+        return;
+      }
+      tbody.innerHTML = accountsList.map(a => `
+        <tr>
+          <td><strong>${a.name}</strong><br><small style="color:#64748b">${a.id}</small></td>
+          <td>${a.type}</td>
+          <td>${a.posted_balance}</td>
+          <td>${a.available_balance}</td>
+          <td><button class="secondary" onclick="loadStatement('${a.id}', '${a.name}')" style="padding:4px 8px;font-size:12px;">Statement</button></td>
+        </tr>
+      `).join('');
+    };
+
+    const updateAccountDropdowns = () => {
+      const opts = accountsList.map(a => `<option value="${a.id}">${a.name} (${a.currency})</option>`).join('');
+      el('tf-from').innerHTML = opts;
+      el('tf-to').innerHTML = opts;
+      el('hold-acc').innerHTML = opts;
+    };
+
+    window.loadStatement = async (accId, accName) => {
+      clearAlerts();
+      selectedAccountId = accId;
+      el('stmt-acc-name').textContent = `${accName} (${accId})`;
+      try {
+        const data = await apiFetch(`/api/v1/accounts/${accId}/statement/`);
+        const tbody = el('tbl-statement').querySelector('tbody');
+        if (!data.results || !data.results.length) {
+          tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No statement lines found</td></tr>';
+          return;
+        }
+        tbody.innerHTML = data.results.map(line => `
+          <tr>
+            <td>${line.id}</td>
+            <td>${line.direction}</td>
+            <td>${line.amount}</td>
+            <td>${line.running_balance}</td>
+          </tr>
+        `).join('');
+      } catch (err) { showError(err); }
+    };
+
+    const loadHolds = async () => {
+      clearAlerts();
+      const status = el('holds-filter-status').value;
+      const url = status ? `/api/v1/holds/?status=${encodeURIComponent(status)}` : '/api/v1/holds/';
+      try {
+        const holds = await apiFetch(url);
+        renderHolds(holds);
+      } catch (err) { showError(err); }
+    };
+
+    const renderHolds = (holds) => {
+      const tbody = el('tbl-holds').querySelector('tbody');
+      if (!holds.length) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No holds found</td></tr>';
+        return;
+      }
+      tbody.innerHTML = holds.map(h => `
+        <tr>
+          <td><small>${h.id}</small><br>${h.description || 'Hold'}</td>
+          <td>${h.amount} ${h.currency}<br><small>captured: ${h.captured_amount}</small></td>
+          <td><span class="badge badge-${h.status}">${h.status}</span></td>
+          <td>
+            ${h.status === 'PENDING' ? `
+              <button onclick="captureHoldPrompt('${h.id}', '${h.amount}')" style="padding:4px 8px;font-size:12px;">Capture</button>
+              <button class="danger" onclick="voidHoldPrompt('${h.id}')" style="padding:4px 8px;font-size:12px;">Void</button>
+            ` : '-'}
+          </td>
+        </tr>
+      `).join('');
+    };
+
+    el('btn-set-token').addEventListener('click', () => {
+      token = el('jwt-token').value.trim();
+      if (!token) return alert('Please paste a JWT token');
+      loadAccounts();
+      loadHolds();
+    });
+
+    el('btn-refresh-accounts').addEventListener('click', loadAccounts);
+    el('btn-refresh-holds').addEventListener('click', loadHolds);
+    el('holds-filter-status').addEventListener('change', loadHolds);
+
+    el('btn-post-transfer').addEventListener('click', async () => {
+      clearAlerts();
+      const fromAcc = el('tf-from').value;
+      const toAcc = el('tf-to').value;
+      const amount = el('tf-amount').value.trim();
+      const desc = el('tf-desc').value.trim();
+
+      if (!fromAcc || !toAcc) return showError('Select both accounts');
+      if (fromAcc === toAcc) return showError('From and To accounts must be different');
+      if (!amount) return showError('Amount is required');
+
+      try {
+        const idempotencyKey = crypto.randomUUID();
+        const body = {
+          reference_id: `transfer-${Date.now()}`,
+          description: desc || 'Demo transfer',
+          lines: [
+            { account_id: toAcc, amount: String(amount), direction: 'DEBIT' },
+            { account_id: fromAcc, amount: String(amount), direction: 'CREDIT' }
+          ]
+        };
+        await apiFetch('/api/v1/journal-entries/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+          body: JSON.stringify(body)
+        });
+        showSuccess('Transfer posted successfully!');
+        loadAccounts();
+        if (selectedAccountId) {
+          const acc = accountsList.find(a => a.id === selectedAccountId);
+          loadStatement(selectedAccountId, acc ? acc.name : '');
+        }
+      } catch (err) { showError(err); }
+    });
+
+    el('btn-auth-hold').addEventListener('click', async () => {
+      clearAlerts();
+      const accId = el('hold-acc').value;
+      const amount = el('hold-amount').value.trim();
+      if (!accId || !amount) return showError('Select account and enter amount');
+
+      try {
+        const idempotencyKey = crypto.randomUUID();
+        const body = {
+          account_id: accId,
+          amount: String(amount),
+          currency: 'USD',
+          reference_id: `hold-${Date.now()}`,
+          description: 'Demo hold authorization'
+        };
+        await apiFetch('/api/v1/holds/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+          body: JSON.stringify(body)
+        });
+        showSuccess('Hold authorized successfully!');
+        loadAccounts();
+        loadHolds();
+      } catch (err) { showError(err); }
+    });
+
+    window.captureHoldPrompt = async (holdId, currentAmount) => {
+      clearAlerts();
+      const amount = prompt('Capture amount:', currentAmount);
+      if (!amount) return;
+      try {
+        const idempotencyKey = crypto.randomUUID();
+        await apiFetch(`/api/v1/holds/${holdId}/capture/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+          body: JSON.stringify({ amount: String(amount) })
+        });
+        showSuccess('Hold captured successfully!');
+        loadAccounts();
+        loadHolds();
+      } catch (err) { showError(err); }
+    };
+
+    window.voidHoldPrompt = async (holdId) => {
+      clearAlerts();
+      if (!confirm('Are you sure you want to void this hold?')) return;
+      try {
+        const idempotencyKey = crypto.randomUUID();
+        await apiFetch(`/api/v1/holds/${holdId}/void/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+          body: JSON.stringify({})
+        });
+        showSuccess('Hold voided successfully!');
+        loadAccounts();
+        loadHolds();
+      } catch (err) { showError(err); }
+    };
+  </script>
+</body>
+</html>
