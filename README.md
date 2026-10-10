@@ -463,7 +463,7 @@ Other commands:
 ```bash
 make test         # full suite
 make test-race    # concurrency and crash-safety tests only
-make bench        # load test (k6)
+make bench        # load & concurrency benchmark
 make integrity    # manage.py check_ledger_integrity
 ```
 

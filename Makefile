@@ -16,13 +16,13 @@ test-race:
 	docker compose exec -T api pytest -m "race"
 
 bench:
-	docker compose exec -T api python scripts/benchmarks/run.py
+	docker compose exec -T -e DB_USER=postgres -e DB_PASSWORD=postgres -e REQUIRE_RESTRICTED_DB_ROLE=0 api python scripts/benchmarks/run.py
 
 demo:
-	docker compose exec -T api python scripts/demo.py
+	docker compose exec -T -e DB_USER=postgres -e DB_PASSWORD=postgres -e REQUIRE_RESTRICTED_DB_ROLE=0 api python scripts/demo.py
 
 integrity:
-	docker compose exec -T api python manage.py check_ledger_integrity
+	docker compose exec -T -e DB_USER=postgres -e DB_PASSWORD=postgres -e REQUIRE_RESTRICTED_DB_ROLE=0 api python manage.py check_ledger_integrity
 
 lint:
 	ruff check .
