@@ -49,8 +49,13 @@ def authorize_hold(tenant, payload: dict, idempotency_key: str, request_hash: by
     from django.utils.dateparse import parse_datetime
     from django.utils import timezone
     
-    expires_at = parse_datetime(payload['expires_at'])
-    if expires_at <= timezone.now():
+    expires_at_raw = payload['expires_at']
+    if isinstance(expires_at_raw, str):
+        expires_at = parse_datetime(expires_at_raw)
+    else:
+        expires_at = expires_at_raw
+
+    if not expires_at or expires_at <= timezone.now():
         raise HoldError("invalid_expiry")
 
     hold_amount = Decimal(str(payload['amount']))

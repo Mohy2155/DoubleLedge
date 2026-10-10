@@ -258,8 +258,13 @@
     };
 
     el('btn-set-token').addEventListener('click', () => {
-      token = el('jwt-token').value.trim();
-      if (!token) return alert('Please paste a JWT token');
+      let raw = el('jwt-token').value.trim();
+      if (!raw) return alert('Please paste a JWT token');
+      if (raw.toLowerCase().startsWith('bearer ')) {
+        raw = raw.substring(7).trim();
+      }
+      // Remove any internal linebreaks or spaces copied from terminals
+      token = raw.replace(/\s+/g, '');
       loadAccounts();
       loadHolds();
     });
@@ -311,12 +316,14 @@
 
       try {
         const idempotencyKey = crypto.randomUUID();
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
         const body = {
           account_id: accId,
           amount: String(amount),
           currency: 'USD',
           reference_id: `hold-${Date.now()}`,
-          description: 'Demo hold authorization'
+          description: 'Demo hold authorization',
+          expires_at: expiresAt
         };
         await apiFetch('/api/v1/holds/', {
           method: 'POST',
@@ -333,12 +340,17 @@
       clearAlerts();
       const amount = prompt('Capture amount:', currentAmount);
       if (!amount) return;
+      const cashAcc = accountsList.find(a => a.name === 'Cash') || accountsList[0];
       try {
         const idempotencyKey = crypto.randomUUID();
         await apiFetch(`/api/v1/holds/${holdId}/capture/`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
-          body: JSON.stringify({ amount: String(amount) })
+          body: JSON.stringify({
+            amount: String(amount),
+            destination_account_id: cashAcc.id,
+            reference_id: `cap-${Date.now()}`
+          })
         });
         showSuccess('Hold captured successfully!');
         loadAccounts();

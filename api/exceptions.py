@@ -48,9 +48,22 @@ def custom_exception_handler(exc, context):
             # Default to 422 if not found in mapping
             status_code, code = error_mapping.get(message, (422, "unprocessable_entity"))
             return Response({"error": {"code": code, "message": message}}, status=status_code)
-            
+
         if isinstance(exc, ObjectDoesNotExist):
             return Response({"error": {"code": "not_found", "message": "Resource not found"}}, status=404)
+
+        from django.db import IntegrityError
+        if isinstance(exc, IntegrityError):
+            err_msg = str(exc)
+            if "accounts_check" in err_msg or "violates check constraint" in err_msg:
+                return Response(
+                    {"error": {"code": "insufficient_funds", "message": "Transaction rejected: account balance cannot be negative."}},
+                    status=422
+                )
+            return Response(
+                {"error": {"code": "integrity_error", "message": err_msg}},
+                status=422
+            )
             
     else:
         # Standardize DRF exceptions
