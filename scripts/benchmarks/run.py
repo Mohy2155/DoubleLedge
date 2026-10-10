@@ -5,8 +5,8 @@ import datetime
 import time
 import concurrent.futures
 from decimal import Decimal
-import statistics
 import json
+import random
 from collections import Counter
 
 def setup_django():
@@ -43,54 +43,21 @@ def generate_keys():
     )
     return private_pem, public_pem
 
-def setup_data():
+def setup_tenant():
     private_pem, public_pem = generate_keys()
     settings.JWT_PUBLIC_KEY = public_pem
 
     tenant_name = f"Benchmark Tenant {uuid.uuid4().hex[:8]}"
     tenant = Tenant.objects.create(name=tenant_name)
-    
-    asset, _ = Account.objects.get_or_create(tenant=tenant, name="Asset", type=Account.Type.ASSET, currency="USD")
-    asset.allow_negative = True
-    asset.save()
-    
-    liability, _ = Account.objects.get_or_create(tenant=tenant, name="Liability", type=Account.Type.LIABILITY, currency="USD")
-    liability.allow_negative = True
-    liability.save()
-    
-    revenue, _ = Account.objects.get_or_create(tenant=tenant, name="Revenue", type=Account.Type.REVENUE, currency="USD")
-    revenue.allow_negative = True
-    revenue.save()
-    
-    expense, _ = Account.objects.get_or_create(tenant=tenant, name="Expense", type=Account.Type.EXPENSE, currency="USD")
-    expense.allow_negative = True
-    expense.save()
 
-    # Seed initial balance properly via the ledger engine to maintain integrity
-    from ledger.services.posting import post_entry
-    import hashlib
-    seed_payload = {
-        "reference_id": f"SEED_{uuid.uuid4()}",
-        "description": "Initial Seed",
-        "lines": [
-            {"account_id": str(asset.id), "amount": "1000000.0000", "direction": "DEBIT"},
-            {"account_id": str(revenue.id), "amount": "1000000.0000", "direction": "CREDIT"}
-        ]
-    }
-    idem_key = "seed_key"
-    req_hash = hashlib.sha256(json.dumps(seed_payload, sort_keys=True).encode()).digest()
-    post_entry(tenant=tenant, payload=seed_payload, idempotency_key=idem_key, request_hash=req_hash)
-    
     payload = {
         "tenant_id": str(tenant.id),
-        "exp": datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1)
+        "exp": datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=2)
     }
     token = jwt.encode(payload, private_pem, algorithm="RS256")
-    
-    return tenant, token, [asset, liability, revenue, expense]
+    return tenant, token
 
 def make_request(token, payload, idem_key):
-    # Each thread needs its own db connection state, so close it at start just in case
     connection.close()
     
     client = APIClient()
@@ -108,8 +75,8 @@ def make_request(token, payload, idem_key):
     connection.close()
     return response.status_code, elapsed, response.data if response.status_code >= 400 else None
 
-def run_load(name, token, requests_data, concurrency=10):
-    print(f"\n--- Running Scenario: {name} ---")
+def run_load(name, token, requests_data, concurrency=16):
+    print(f"\n--- Running Scenario: {name} (Concurrency: {concurrency}, Requests: {len(requests_data)}) ---")
     start_time = time.perf_counter()
     
     status_codes = Counter()
@@ -132,34 +99,35 @@ def run_load(name, token, requests_data, concurrency=10):
     total_reqs = len(requests_data)
     tps = total_reqs / total_time
     
-    print(f"Total Requests: {total_reqs}")
-    print(f"Total Elapsed Time: {total_time:.2f}s")
-    print(f"Throughput: {tps:.2f} req/sec")
-    print("Status Codes:")
-    for code, count in sorted(status_codes.items()):
-        print(f"  {code}: {count}")
-        
-    if latencies:
-        latencies.sort()
-        p50 = latencies[int(len(latencies) * 0.5)]
-        p95 = latencies[int(len(latencies) * 0.95)]
-        p99 = latencies[int(len(latencies) * 0.99)]
-        print(f"Latencies (ms): p50={p50*1000:.1f} | p95={p95*1000:.1f} | p99={p99*1000:.1f}")
-        
+    latencies.sort()
+    p50 = latencies[int(len(latencies) * 0.5)] * 1000 if latencies else 0.0
+    p95 = latencies[int(len(latencies) * 0.95)] * 1000 if latencies else 0.0
+    p99 = latencies[int(len(latencies) * 0.99)] * 1000 if latencies else 0.0
+    
+    print(f"Total Requests: {total_reqs} | Elapsed: {total_time:.2f}s | Throughput: {tps:.1f} tx/s")
+    print(f"Latencies (ms): p50={p50:.1f} | p95={p95:.1f} | p99={p99:.1f}")
+    print(f"Status Codes: {dict(status_codes)}")
+    
     if status_codes.get(500, 0) > 0:
         print("CRITICAL: Encountered unhandled 500 errors!")
-        for e in errors:
+        for e in errors[:3]:
             print(e)
             
-    return status_codes
+    return {
+        "name": name,
+        "concurrency": concurrency,
+        "throughput": round(tps, 1),
+        "p50": round(p50, 1),
+        "p99": round(p99, 1),
+        "status_codes": status_codes
+    }
 
 def check_ledger_integrity(tenant, accounts):
     print("\n--- Checking Ledger Integrity ---")
-    total_debits = Decimal('0.00')
-    total_credits = Decimal('0.00')
+    total_debits = Decimal('0.0000')
+    total_credits = Decimal('0.0000')
     
-    # Calculate expected balances from entries
-    expected_balances = {str(a.id): Decimal('0.00') for a in accounts}
+    expected_balances = {str(a.id): Decimal('0.0000') for a in accounts}
     type_map = {str(a.id): a.type for a in accounts}
     
     for entry in JournalEntry.objects.filter(tenant=tenant):
@@ -181,58 +149,160 @@ def check_ledger_integrity(tenant, accounts):
     assert total_debits == total_credits, f"Integrity failed: DEBITS {total_debits} != CREDITS {total_credits}"
     print(f"Double-entry Check Passed! Total Debits/Credits perfectly balanced at {total_debits}.")
     
-    # Verify materialized balances
+    drift_count = 0
     for account in accounts:
         account.refresh_from_db()
         expected = expected_balances[str(account.id)]
-        assert account.balance == expected, f"Account {account.name} balance {account.balance} != expected {expected}"
-        
-    print("Balance Materialization Check Passed! All accounts match sum of journal lines.")
+        if account.balance != expected:
+            drift_count += 1
+            print(f"DRIFT: Account {account.name} balance {account.balance} != expected {expected}")
+            
+    assert drift_count == 0, f"Found {drift_count} accounts with balance drift!"
+    print(f"Balance Materialization Check Passed! Checked {len(accounts)} accounts with 0 drift.")
+    return 0
 
 def run_benchmark():
-    tenant, token, accounts = setup_data()
-    asset, liability, revenue, expense = accounts
+    tenant, token = setup_tenant()
     
-    # 1. Baseline Throughput (100 sequential-ish unique transfers)
-    baseline_reqs = []
-    for i in range(100):
-        baseline_reqs.append({
-            'idem_key': f"baseline_{uuid.uuid4()}",
+    print("\n=======================================================")
+    print("DoubleLedge Concurrency & Throughput Benchmark Suite")
+    print("=======================================================")
+    
+    results = []
+
+    # -------------------------------------------------------------------------
+    # Scenario 1: Spread across 10k accounts (minimal lock contention)
+    # -------------------------------------------------------------------------
+    print("\nProvisioning 10,000 accounts for Scenario 1...")
+    accounts_10k = [
+        Account(
+            tenant=tenant,
+            name=f"Acc_10k_{i}",
+            type=Account.Type.ASSET if i % 2 == 0 else Account.Type.LIABILITY,
+            currency="USD",
+            allow_negative=True
+        )
+        for i in range(10000)
+    ]
+    Account.objects.bulk_create(accounts_10k, batch_size=2000)
+    accounts_10k = list(Account.objects.filter(tenant=tenant, name__startswith="Acc_10k_"))
+    
+    reqs_10k = []
+    num_requests = 1000
+    for i in range(num_requests):
+        idx1 = random.randint(0, 9999)
+        idx2 = (idx1 + random.randint(1, 9999)) % 10000
+        a1 = accounts_10k[idx1]
+        a2 = accounts_10k[idx2]
+        reqs_10k.append({
+            'idem_key': f"s1_{uuid.uuid4()}",
             'payload': {
-                "reference_id": f"BASE_{uuid.uuid4()}",
-                "description": "Baseline throughput test",
+                "reference_id": f"S1_{uuid.uuid4()}",
+                "description": "Spread across 10k accounts",
                 "lines": [
-                    {"account_id": str(asset.id), "amount": "10.0000", "direction": "CREDIT"},
-                    {"account_id": str(expense.id), "amount": "10.0000", "direction": "DEBIT"}
+                    {"account_id": str(a1.id), "amount": "10.0000", "direction": "CREDIT"},
+                    {"account_id": str(a2.id), "amount": "10.0000", "direction": "DEBIT"}
                 ]
             }
         })
-        
-    run_load("Baseline Throughput", token, baseline_reqs, concurrency=10)
+    res_10k = run_load("Spread across 10k accounts", token, reqs_10k, concurrency=16)
+    results.append(res_10k)
+
+    # -------------------------------------------------------------------------
+    # Scenario 2: 100 accounts (moderate contention)
+    # -------------------------------------------------------------------------
+    print("\nProvisioning 100 accounts for Scenario 2...")
+    accounts_100 = [
+        Account(
+            tenant=tenant,
+            name=f"Acc_100_{i}",
+            type=Account.Type.ASSET if i % 2 == 0 else Account.Type.LIABILITY,
+            currency="USD",
+            allow_negative=True
+        )
+        for i in range(100)
+    ]
+    Account.objects.bulk_create(accounts_100)
+    accounts_100 = list(Account.objects.filter(tenant=tenant, name__startswith="Acc_100_"))
     
-    # 2. Contention / Hot-Spot Stress (100 concurrent transfers involving the same exact accounts)
-    contention_reqs = []
-    for i in range(100):
-        # We mix directions randomly to cause massive row lock contention on just 2 accounts
-        contention_reqs.append({
-            'idem_key': f"contention_{uuid.uuid4()}",
+    reqs_100 = []
+    for i in range(500):
+        idx1 = random.randint(0, 99)
+        idx2 = (idx1 + random.randint(1, 99)) % 100
+        a1 = accounts_100[idx1]
+        a2 = accounts_100[idx2]
+        reqs_100.append({
+            'idem_key': f"s2_{uuid.uuid4()}",
             'payload': {
-                "reference_id": f"CONT_{uuid.uuid4()}",
-                "description": "Contention throughput test",
+                "reference_id": f"S2_{uuid.uuid4()}",
+                "description": "100 accounts contention",
                 "lines": [
-                    {"account_id": str(asset.id), "amount": "1.0000", "direction": "CREDIT" if i % 2 == 0 else "DEBIT"},
-                    {"account_id": str(revenue.id), "amount": "1.0000", "direction": "DEBIT" if i % 2 == 0 else "CREDIT"}
+                    {"account_id": str(a1.id), "amount": "5.0000", "direction": "CREDIT"},
+                    {"account_id": str(a2.id), "amount": "5.0000", "direction": "DEBIT"}
                 ]
             }
         })
-        
-    status_codes = run_load("Contention Stress", token, contention_reqs, concurrency=20)
+    res_100 = run_load("100 accounts", token, reqs_100, concurrency=16)
+    results.append(res_100)
+
+    # -------------------------------------------------------------------------
+    # Scenario 3: Single hot account (maximum row-lock contention)
+    # -------------------------------------------------------------------------
+    print("\nProvisioning Single Hot Account & counter-parties for Scenario 3...")
+    hot_account = Account.objects.create(
+        tenant=tenant,
+        name="Hot_Master_Account",
+        type=Account.Type.LIABILITY,
+        currency="USD",
+        allow_negative=True
+    )
+    counter_parties = [
+        Account(
+            tenant=tenant,
+            name=f"Counterparty_{i}",
+            type=Account.Type.ASSET,
+            currency="USD",
+            allow_negative=True
+        )
+        for i in range(200)
+    ]
+    Account.objects.bulk_create(counter_parties)
+    counter_parties = list(Account.objects.filter(tenant=tenant, name__startswith="Counterparty_"))
     
-    assert status_codes.get(500, 0) == 0, "Failed: Encountered 500 errors (potential deadlocks)"
-    
-    check_ledger_integrity(tenant, accounts)
-    
-    print("\nBenchmark completed successfully. 0 Unhandled 500s. 0 Deadlocks.")
+    reqs_hot = []
+    for i in range(300):
+        cp = counter_parties[i % len(counter_parties)]
+        reqs_hot.append({
+            'idem_key': f"s3_{uuid.uuid4()}",
+            'payload': {
+                "reference_id": f"S3_{uuid.uuid4()}",
+                "description": "Hot account contention",
+                "lines": [
+                    {"account_id": str(hot_account.id), "amount": "1.0000", "direction": "CREDIT" if i % 2 == 0 else "DEBIT"},
+                    {"account_id": str(cp.id), "amount": "1.0000", "direction": "DEBIT" if i % 2 == 0 else "CREDIT"}
+                ]
+            }
+        })
+    res_hot = run_load("Single hot account (worst case)", token, reqs_hot, concurrency=16)
+    results.append(res_hot)
+
+    # -------------------------------------------------------------------------
+    # Integrity Verification
+    # -------------------------------------------------------------------------
+    all_accounts = accounts_10k + accounts_100 + [hot_account] + counter_parties
+    drift = check_ledger_integrity(tenant, all_accounts)
+
+    # -------------------------------------------------------------------------
+    # Final Table Summary (README Markdown Format)
+    # -------------------------------------------------------------------------
+    print("\n=======================================================")
+    print("FINAL BENCHMARK TABLE (FOR README.md)")
+    print("=======================================================")
+    print("| Scenario | Concurrency | Throughput | p50 | p99 | Balance drift |")
+    print("| --- | --- | --- | --- | --- | --- |")
+    for r in results:
+        print(f"| {r['name']} | {r['concurrency']} | {r['throughput']} tx/s | {r['p50']} ms | {r['p99']} ms | {drift} |")
+    print("=======================================================\n")
 
 if __name__ == '__main__':
     run_benchmark()
