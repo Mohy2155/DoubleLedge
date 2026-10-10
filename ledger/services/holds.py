@@ -61,7 +61,7 @@ def authorize_hold(tenant, payload: dict, idempotency_key: str, request_hash: by
     aggs = get_aggregate_balance(tenant.id, account.id)
     available = aggs['available_balance']
 
-    if available - hold_amount < 0 and not account.allow_negative:
+    if available - hold_amount < 0 and (not account.allow_negative or account.shard_count > 0):
         raise HoldError("insufficient_funds")
 
     hold = Hold.objects.create(
@@ -233,7 +233,8 @@ def void_hold(tenant, hold_id: str, idempotency_key: str, request_hash: bytes):
         "hold_id": str(hold.id),
         "reference_id": hold.reference_id,
         "account_id": str(hold.account_id),
-        "amount": str(hold.amount)
+        "amount": str(hold.amount),
+        "released_amount": str(hold.amount - hold.captured_amount),
     }
     OutboxEvent.objects.create(tenant=tenant, type="hold.voided", payload=outbox_payload)
 
