@@ -511,6 +511,11 @@ The hot-account row is intentionally included: it shows the honest ceiling of ro
   * Hold invariant (option 1: `held_amount` plus a DB CHECK), `released_amount` in void/expire webhook payloads
 * **Idempotency Race:**
   * Idempotency race: one journal entry but a 200 balance delta, still unexplained
+* **Database Roles & Permissions:**
+  * Default privileges: tables created by migrations after 0012 do not automatically inherit `ledger_runtime` grants unless `ALTER DEFAULT PRIVILEGES` is configured or each new migration adds grants
+  * Sequences: granted `USAGE, SELECT` (no `UPDATE` to prevent `setval` sequence resets)
+  * Immutability assertion: add CI test checking `has_table_privilege('ledger_runtime', 'journal_entries', 'UPDATE')` returns false
+  * Role inspection in apps.py: currently runs on ready() check; idiomatic refactor to register as a Django system check (`manage.py check --deploy`)
 * **Test Isolation & Roles:**
   * Red-team tests are unreviewed, so they stay on a separate branch until converted to `xfail(strict=True)`
   * Most tests run as the owner (`postgres`), and only the RLS/role-specific tests run as `ledger_runtime`
