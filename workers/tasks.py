@@ -177,7 +177,7 @@ def expire_holds():
                     LIMIT 500
                     FOR UPDATE SKIP LOCKED
                 )
-                RETURNING id, tenant_id, account_id, amount, reference_id
+                RETURNING id, tenant_id, account_id, amount, reference_id, captured_amount
             """)
             expired_rows = cursor.fetchall()
 
@@ -190,6 +190,7 @@ def expire_holds():
                     "account_id": str(row[2]),
                     "amount": str(row[3]),
                     "reference_id": row[4],
+                    "released_amount": str(row[3] - row[5]),
                 }
             )
 
