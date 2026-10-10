@@ -435,6 +435,24 @@ Deadlock retries: <n>   Idempotent replays: <n>
 Integrity check: debits == credits ✔   balances == recomputed ✔   checkpoint chain ✔
 ```
 
+### Local Demo & API Exploration
+
+Run the management commands to provision a tenant, seed demo data, and explore the API:
+
+```bash
+# 1. Provision a demo tenant and get a dev JWT (valid for 24 hours)
+docker compose run --rm -e DB_USER=postgres -e DB_PASSWORD=postgres -e REQUIRE_RESTRICTED_DB_ROLE=0 api python manage.py create_tenant --name="Acme Corp"
+
+# 2. Seed chart of accounts, sample transactions, and a hold
+docker compose run --rm -e DB_USER=postgres -e DB_PASSWORD=postgres -e REQUIRE_RESTRICTED_DB_ROLE=0 api python manage.py seed_demo --tenant_id=<TENANT_ID>
+
+# 3. Query seeded account details via the API using the dev token
+curl -H "Authorization: Bearer <TOKEN>" http://localhost:8000/api/v1/accounts/<ACCOUNT_ID>/
+
+# 4. Retrieve the seeded hold status
+curl -H "Authorization: Bearer <TOKEN>" http://localhost:8000/api/v1/holds/<HOLD_ID>/
+```
+
 Other commands:
 
 ```bash
