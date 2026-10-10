@@ -34,7 +34,7 @@ def retry_on_deadlock(max_retries=5, base_delay=0.1):
                     # psycopg3 exposes pgcode via e.__cause__.pgcode
                     cause = getattr(e, '__cause__', None)
                     pgcode = getattr(cause, 'pgcode', None)
-                    if pgcode in ('40P01', '40001') and retries < max_retries:
+                    if pgcode in ('40P01', '40001', '55P03') and retries < max_retries:
                         retries += 1
                         time.sleep(base_delay * (2 ** retries) + random.uniform(0, 0.1))
                     else:

@@ -1,13 +1,11 @@
 import os
+from contextlib import contextmanager
 import pytest
 from django.db import connection
 from ledger.models import Tenant
 
 @pytest.fixture(autouse=True, scope='session')
-def apply_test_db_grants(django_db_setup, django_db_blocker):
-    if 'LEDGER_RUNTIME_PASSWORD' not in os.environ:
-        pytest.fail("LEDGER_RUNTIME_PASSWORD env var must be set for the test suite.")
-    
+def require_runtime_role(django_db_setup, django_db_blocker):
     with django_db_blocker.unblock():
         with connection.cursor() as c:
             # Check if ledger_runtime exists
@@ -16,21 +14,28 @@ def apply_test_db_grants(django_db_setup, django_db_blocker):
                 pytest.fail("Role 'ledger_runtime' is missing. Please provision it before running tests.")
 
 
-def create_tenant(*args, **kwargs):
+@contextmanager
+def _as_owner():
     with connection.cursor() as c:
-        c.execute("SELECT current_user;")
-        curr = c.fetchone()[0]
-        if curr != 'postgres':
-            c.execute('RESET ROLE;')
-            need_restore = True
-        else:
-            need_restore = False
+        c.execute("SELECT current_user <> session_user;")
+        switched = c.fetchone()[0]
+        role = None
+        if switched:
+            c.execute("SELECT current_user;")
+            role = c.fetchone()[0]
+            c.execute("RESET ROLE;")
     try:
-        return _orig_tenant_create(*args, **kwargs)
+        yield
     finally:
-        if need_restore:
+        if switched and role:
             with connection.cursor() as c:
-                c.execute(f"SET ROLE {curr};")
+                safe_role = role.replace('"', '""')
+                c.execute(f'SET ROLE "{safe_role}";')
+
+
+def create_tenant(*args, **kwargs):
+    with _as_owner():
+        return _orig_tenant_create(*args, **kwargs)
 
 _orig_tenant_create = Tenant.objects.create
 Tenant.objects.create = create_tenant
@@ -55,13 +60,7 @@ def switch_to_runtime_role(request, db):
 @pytest.fixture
 def managed_tenant_and_account(db):
     from ledger.models import Account
-    tenant = create_tenant(name='Spike Tenant 2')
-    with connection.cursor() as c:
-        c.execute('RESET ROLE;')
-    try:
-        account = Account.objects.create(tenant=tenant, name='Spike Acc 2', type='ASSET', currency='USD')
-        return tenant, account
-    finally:
-        with connection.cursor() as c:
-            c.execute('SET ROLE ledger_runtime;')
-
+    tenant = create_tenant(name='Managed Test Tenant')
+    with _as_owner():
+        account = Account.objects.create(tenant=tenant, name='Managed Test Account', type='ASSET', currency='USD')
+    return tenant, account

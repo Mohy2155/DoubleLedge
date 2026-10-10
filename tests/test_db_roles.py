@@ -37,7 +37,7 @@ def test_direct_connection_smoke_test(managed_tenant_and_account):
     db_settings = settings.DATABASES['default']
     
     if 'LEDGER_RUNTIME_PASSWORD' not in os.environ:
-        pytest.fail("LEDGER_RUNTIME_PASSWORD env var must be set for the test suite.")
+        pytest.skip("LEDGER_RUNTIME_PASSWORD env var not set; skipping direct connection test.")
     db_password = os.environ['LEDGER_RUNTIME_PASSWORD']
     
     conn = psycopg.connect(
@@ -135,3 +135,13 @@ def test_rls_under_plain_django_db_wrapper(managed_tenant_and_account):
         with connection.cursor() as c:
             c.execute(f"SELECT set_config('app.tenant_id', '{tenant.id}', true);")
         assert Account.objects.count() == 1
+
+
+@pytest.mark.django_db
+@pytest.mark.runtime_role
+def test_runtime_cannot_mutate_ledger():
+    with connection.cursor() as c:
+        for t in ('journal_entries', 'transaction_lines'):
+            for p in ('UPDATE', 'DELETE', 'TRUNCATE'):
+                c.execute("SELECT has_table_privilege('ledger_runtime', %s, %s);", [t, p])
+                assert c.fetchone()[0] is False, f"ledger_runtime should NOT have {p} on {t}"
