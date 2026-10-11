@@ -3,133 +3,562 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DoubleLedge Demo</title>
+  <title>DoubleLedge Demo UI</title>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; background: #f8fafc; color: #0f172a; }
-    h1, h2, h3 { margin-top: 0; }
-    .card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-    input, select, textarea, button { font-size: 14px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box; }
-    button { background: #2563eb; color: #ffffff; border: none; cursor: pointer; font-weight: 500; }
-    button:hover { background: #1d4ed8; }
-    button.secondary { background: #64748b; }
-    button.secondary:hover { background: #475569; }
-    button.danger { background: #dc2626; }
-    button.danger:hover { background: #b91c1c; }
-    table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 14px; }
-    th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #e2e8f0; }
-    th { background: #f1f5f9; }
-    .row { display: flex; gap: 16px; flex-wrap: wrap; }
-    .col { flex: 1; min-width: 300px; }
-    .form-group { margin-bottom: 12px; }
-    .form-group label { display: block; font-weight: 600; margin-bottom: 4px; font-size: 13px; }
-    .form-group input, .form-group select { width: 100%; }
-    .error { background: #fef2f2; border: 1px solid #f87171; color: #991b1b; padding: 10px; border-radius: 4px; margin-bottom: 12px; display: none; word-break: break-all; white-space: pre-wrap; font-family: monospace; font-size: 13px; }
-    .success { background: #f0fdf4; border: 1px solid #4ade80; color: #166534; padding: 10px; border-radius: 4px; margin-bottom: 12px; display: none; word-break: break-all; font-size: 13px; }
-    .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 12px; font-weight: 600; }
-    .badge-PENDING { background: #fef3c7; color: #92400e; }
-    .badge-CAPTURED { background: #dcfce7; color: #166534; }
-    .badge-VOIDED { background: #fee2e2; color: #991b1b; }
+    :root {
+      --bg: #f6f8fa;
+      --surface: #ffffff;
+      --border: #d8dee4;
+      --text: #1f2328;
+      --muted: #59636e;
+      --accent: #1f6feb;
+      --accent-hover: #1958ba;
+      --ok: #1a7f37;
+      --ok-bg: #dafbe1;
+      --warn: #9a6700;
+      --warn-bg: #fff8c5;
+      --bad: #cf222e;
+      --bad-bg: #ffebe9;
+      --radius: 6px;
+      --font-mono: ui-monospace, "SF Mono", Consolas, monospace;
+      --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 24px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    :focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    /* Typography & Utilities */
+    h1, h2, h3 {
+      margin-top: 0;
+      color: var(--text);
+      font-weight: 600;
+    }
+    h2 { font-size: 18px; margin-bottom: 12px; }
+    h3 { font-size: 14px; margin-bottom: 8px; }
+
+    .muted { color: var(--muted); }
+    .font-mono { font-family: var(--font-mono); }
+
+    .tabular-nums, .num {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+    }
+
+    /* Header */
+    .app-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .app-header h1 {
+      font-size: 22px;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .app-header .tagline {
+      margin: 0;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .docs-link {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+      font-size: 13px;
+    }
+    .docs-link:hover {
+      text-decoration: underline;
+    }
+
+    /* Connection pill */
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+      border: 1px solid var(--border);
+      background: #ffffff;
+    }
+    .pill-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+    .pill-disconnected {
+      color: var(--muted);
+    }
+    .pill-disconnected .pill-dot {
+      background: #8c959f;
+    }
+    .pill-connected {
+      color: var(--ok);
+      background: var(--ok-bg);
+      border-color: #4ade80;
+    }
+    .pill-connected .pill-dot {
+      background: var(--ok);
+    }
+
+    /* Panels / Cards */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+    }
+
+    /* Try-it Guide */
+    details.try-it-guide {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      margin-bottom: 20px;
+    }
+    details.try-it-guide summary {
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--text);
+      user-select: none;
+    }
+    details.try-it-guide .steps-list {
+      margin: 12px 0 4px 20px;
+      padding: 0;
+      font-size: 13px;
+      color: var(--text);
+    }
+    details.try-it-guide .steps-list li {
+      margin-bottom: 6px;
+    }
+
+    /* Form Elements */
+    input, select, textarea, button {
+      font-family: inherit;
+      font-size: 14px;
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-sizing: border-box;
+    }
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--accent);
+    }
+    .form-group {
+      margin-bottom: 12px;
+    }
+    .form-group label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 4px;
+      font-size: 13px;
+    }
+    .form-group input, .form-group select {
+      width: 100%;
+      background: #ffffff;
+    }
+    .helper-text {
+      font-size: 12px;
+      margin: 6px 0 10px 0;
+      line-height: 1.4;
+      color: var(--muted);
+    }
+
+    /* Buttons */
+    button {
+      background: var(--accent);
+      color: #ffffff;
+      border: 1px solid transparent;
+      cursor: pointer;
+      font-weight: 500;
+      transition: background 0.15s ease, opacity 0.15s ease;
+    }
+    button:hover:not(:disabled) {
+      background: var(--accent-hover);
+    }
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+    button[aria-busy="true"] {
+      opacity: 0.7;
+      cursor: wait;
+    }
+    button.secondary {
+      background: #f6f8fa;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    button.secondary:hover:not(:disabled) {
+      background: #eaeef2;
+    }
+    button.danger {
+      background: transparent;
+      color: var(--bad);
+      border: 1px solid var(--border);
+    }
+    button.danger:hover:not(:disabled) {
+      background: var(--bad-bg);
+      border-color: var(--bad);
+    }
+    button.btn-sm {
+      padding: 3px 8px;
+      font-size: 12px;
+    }
+    button.btn-copy {
+      background: #f6f8fa;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      padding: 1px 6px;
+      font-size: 11px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button.btn-copy:hover {
+      color: var(--text);
+      background: #eaeef2;
+    }
+
+    /* Tables */
+    .table-container {
+      overflow-x: auto;
+      margin-top: 8px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      text-align: left;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    th {
+      background: #f6f8fa;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    th.num, td.num {
+      text-align: right;
+    }
+    tbody tr:hover {
+      background: #fafbfc;
+    }
+    tbody tr.selected-row {
+      background: #f0f7ff;
+    }
+    tfoot td {
+      background: #f6f8fa;
+      border-top: 2px solid var(--border);
+      font-size: 13px;
+    }
+
+    /* Badges */
+    .badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    .badge-PENDING { background: var(--warn-bg); color: var(--warn); }
+    .badge-CAPTURED { background: var(--ok-bg); color: var(--ok); }
+    .badge-VOIDED { background: var(--bad-bg); color: var(--bad); }
+    .badge-EXPIRED { background: #eaeef2; color: var(--bad); }
+    .badge-DEBIT { background: #e0f2fe; color: #0369a1; }
+    .badge-CREDIT { background: #f3e8ff; color: #7e22ce; }
+
+    /* Layout Columns */
+    .row {
+      display: flex;
+      gap: 20px;
+    }
+    .col {
+      flex: 1;
+      min-width: 0;
+    }
+
+    /* Responsive */
+    @media (max-width: 900px) {
+      .row {
+        flex-direction: column;
+      }
+      body {
+        padding: 16px;
+      }
+    }
+
+    /* Alerts and Toasts */
+    .error {
+      background: var(--bad-bg);
+      border: 1px solid #f87171;
+      color: var(--bad);
+      padding: 10px 14px;
+      border-radius: var(--radius);
+      margin-bottom: 16px;
+      display: none;
+      word-break: break-all;
+      white-space: pre-wrap;
+      font-family: var(--font-mono);
+      font-size: 13px;
+    }
+    .success {
+      background: var(--ok-bg);
+      border: 1px solid #4ade80;
+      color: var(--ok);
+      padding: 10px 14px;
+      border-radius: var(--radius);
+      margin-bottom: 16px;
+      display: none;
+      word-break: break-all;
+      font-size: 13px;
+    }
+
+    /* Toast container */
+    .toast-container {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      pointer-events: none;
+      max-width: 400px;
+    }
+    .toast {
+      pointer-events: auto;
+      padding: 10px 16px;
+      border-radius: var(--radius);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      font-size: 13px;
+      line-height: 1.4;
+      transition: opacity 0.3s ease, transform 0.3s ease;
+      word-break: break-word;
+    }
+    .toast-success {
+      background: var(--ok);
+      color: #ffffff;
+    }
+    .toast-error {
+      background: var(--bad);
+      color: #ffffff;
+    }
+    .toast-fadeout {
+      opacity: 0;
+      transform: translateY(-8px);
+    }
   </style>
 </head>
 <body>
-  <h1>DoubleLedge Demo UI</h1>
-  <div id="error-box" class="error"></div>
-  <div id="success-box" class="success"></div>
-
-  <div class="card">
-    <div class="form-group" style="margin-bottom: 0;">
-      <label for="jwt-token">Dev JWT Token (kept in memory only):</label>
-      <div style="display: flex; gap: 8px;">
-        <input type="password" id="jwt-token" placeholder="Paste dev JWT token here..." style="flex: 1;" />
-        <button id="btn-set-token">Load Data</button>
+  <div class="container">
+    <header class="app-header">
+      <div class="header-left">
+        <h1>DoubleLedge <span class="badge" style="font-size: 12px; vertical-align: middle; background: #e2e8f0; color: #475569;">Demo UI</span></h1>
+        <p class="tagline">Multi-tenant double-entry ledger &bull; holds &bull; sharding</p>
       </div>
-    </div>
-  </div>
-
-  <div class="row">
-    <div class="col">
-      <div class="card">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <h2>Accounts</h2>
-          <button class="secondary" id="btn-refresh-accounts">Refresh</button>
+      <div class="header-actions">
+        <a href="/api/docs/" target="_blank" class="docs-link">API docs &nearr;</a>
+        <div id="connection-pill" class="pill pill-disconnected">
+          <span class="pill-dot"></span>
+          <span id="pill-text">Not connected</span>
         </div>
-        <table id="tbl-accounts">
-          <thead>
-            <tr><th>Name</th><th>Type</th><th>Posted</th><th>Available</th><th>Action</th></tr>
-          </thead>
-          <tbody><tr><td colspan="5" style="text-align: center; color: #64748b;">Load token to view accounts</td></tr></tbody>
-        </table>
       </div>
+    </header>
 
-      <div class="card">
-        <h2>Transfer Form (Journal Entry)</h2>
-        <div class="form-group">
-          <label>From Account (Credit):</label>
-          <select id="tf-from"></select>
+    <details id="try-it-guide" class="try-it-guide" open>
+      <summary><strong>Try it</strong> <span class="muted">(collapsible 4-step guide)</span></summary>
+      <ol class="steps-list">
+        <li><strong>Post a transfer</strong> between two accounts and watch both balances change.</li>
+        <li><strong>Authorize a hold:</strong> Available drops, Posted does not.</li>
+        <li><strong>Capture part of a hold:</strong> the remainder is released immediately.</li>
+        <li><strong>Void another hold:</strong> its amount returns to Available.</li>
+      </ol>
+    </details>
+
+    <div id="toast-container" class="toast-container"></div>
+    <div id="error-box" class="error"></div>
+    <div id="success-box" class="success"></div>
+
+    <div class="card" id="token-card">
+      <div id="token-input-row" class="form-group" style="margin-bottom: 0;">
+        <label for="jwt-token">Dev JWT Token (kept in memory only):</label>
+        <div style="display: flex; gap: 8px;">
+          <input type="password" id="jwt-token" placeholder="Paste dev JWT token here..." style="flex: 1;" />
+          <button id="btn-set-token">Load Data</button>
         </div>
-        <div class="form-group">
-          <label>To Account (Debit):</label>
-          <select id="tf-to"></select>
+      </div>
+      <div id="token-connected-row" style="display: none; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span class="pill pill-connected"><span class="pill-dot"></span>Connected &bull; tenant <span id="connected-tenant-id"></span></span>
+          <span class="muted" style="font-size: 12px;">Token kept in memory</span>
         </div>
-        <div class="form-group">
-          <label>Amount (USD):</label>
-          <input type="text" id="tf-amount" placeholder="e.g. 50.0000" />
-        </div>
-        <div class="form-group">
-          <label>Description:</label>
-          <input type="text" id="tf-desc" placeholder="e.g. Demo transfer" value="Demo transfer" />
-        </div>
-        <button id="btn-post-transfer">Post Transfer</button>
+        <button class="secondary" id="btn-change-token" style="padding: 4px 10px; font-size: 13px;">Change</button>
       </div>
     </div>
 
-    <div class="col">
-      <div class="card">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <h2>Statement</h2>
-          <span id="stmt-acc-name" style="font-size: 13px; color: #64748b;">Select an account</span>
+    <div class="row">
+      <!-- Left Column: Accounts, Transfer -->
+      <div class="col">
+        <div class="card">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h2>Accounts</h2>
+            <button class="secondary btn-sm" id="btn-refresh-accounts">Refresh</button>
+          </div>
+          <div class="table-container">
+            <table id="tbl-accounts">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Type</th>
+                  <th class="num">Posted</th>
+                  <th class="num">Available</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody><tr><td colspan="5" style="text-align: center; color: var(--muted); padding: 24px;">Load token to view accounts</td></tr></tbody>
+            </table>
+          </div>
         </div>
-        <table id="tbl-statement">
-          <thead>
-            <tr><th>ID</th><th>Direction</th><th>Amount</th><th>Running Balance</th></tr>
-          </thead>
-          <tbody><tr><td colspan="4" style="text-align: center; color: #64748b;">No account selected</td></tr></tbody>
-        </table>
-      </div>
 
-      <div class="card">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <h2>Holds</h2>
-          <div>
-            <select id="holds-filter-status" style="font-size: 12px; padding: 4px;">
-              <option value="">All Statuses</option>
-              <option value="PENDING">PENDING</option>
-              <option value="CAPTURED">CAPTURED</option>
-              <option value="VOIDED">VOIDED</option>
+        <div class="card">
+          <h2>Transfer Form (Journal Entry)</h2>
+          <div class="form-group">
+            <label for="tf-from">From Account (Credit):</label>
+            <select id="tf-from">
+              <option value="" disabled selected>Select account</option>
             </select>
-            <button class="secondary" id="btn-refresh-holds" style="padding: 4px 8px; font-size: 12px;">Refresh</button>
+          </div>
+          <div class="form-group">
+            <label for="tf-to">To Account (Debit):</label>
+            <select id="tf-to">
+              <option value="" disabled selected>Select account</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="tf-amount">Amount (USD):</label>
+            <input type="text" id="tf-amount" placeholder="e.g. 50.0000" />
+          </div>
+          <div class="form-group">
+            <label for="tf-desc">Description:</label>
+            <input type="text" id="tf-desc" placeholder="e.g. Demo transfer" value="Demo transfer" />
+          </div>
+          <p class="helper-text">Credits the first account and debits the second; the effect on each balance depends on its account type.</p>
+          <button id="btn-post-transfer" disabled>Post Transfer</button>
+        </div>
+      </div>
+
+      <!-- Right Column: Statement, Holds -->
+      <div class="col">
+        <div class="card">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h2>Statement</h2>
+            <span id="stmt-acc-name" style="font-size: 13px; color: var(--muted);">Select an account</span>
+          </div>
+          <div class="table-container">
+            <table id="tbl-statement">
+              <thead>
+                <tr>
+                  <th>Line #</th>
+                  <th>Direction</th>
+                  <th class="num">Amount</th>
+                  <th class="num">Running Balance</th>
+                </tr>
+              </thead>
+              <tbody><tr><td colspan="4" style="text-align: center; color: var(--muted); padding: 24px;">No account selected</td></tr></tbody>
+            </table>
           </div>
         </div>
 
-        <div style="background: #f8fafc; padding: 10px; border: 1px solid #e2e8f0; border-radius: 4px; margin: 10px 0;">
-          <h3 style="font-size: 14px; margin-bottom: 8px;">Authorize New Hold</h3>
-          <div class="form-group">
-            <label>Account:</label>
-            <select id="hold-acc"></select>
+        <div class="card">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h2>Holds</h2>
+            <div>
+              <select id="holds-filter-status" style="font-size: 12px; padding: 4px 8px;">
+                <option value="">All Statuses</option>
+                <option value="PENDING">PENDING</option>
+                <option value="CAPTURED">CAPTURED</option>
+                <option value="VOIDED">VOIDED</option>
+              </select>
+              <button class="secondary btn-sm" id="btn-refresh-holds">Refresh</button>
+            </div>
           </div>
-          <div class="form-group">
-            <label>Amount (USD):</label>
-            <input type="text" id="hold-amount" placeholder="e.g. 25.0000" />
-          </div>
-          <button id="btn-auth-hold" style="padding: 6px 12px;">Authorize Hold</button>
-        </div>
 
-        <table id="tbl-holds">
-          <thead>
-            <tr><th>ID / Description</th><th>Amount</th><th>Status</th><th>Actions</th></tr>
-          </thead>
-          <tbody><tr><td colspan="4" style="text-align: center; color: #64748b;">Load token to view holds</td></tr></tbody>
-        </table>
+          <div style="background: #f6f8fa; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); margin: 12px 0;">
+            <h3>Authorize New Hold</h3>
+            <div class="form-group">
+              <label for="hold-acc">Account:</label>
+              <select id="hold-acc">
+                <option value="" disabled selected>Select account</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="hold-amount">Amount (USD):</label>
+              <input type="text" id="hold-amount" placeholder="e.g. 25.0000" />
+            </div>
+            <button id="btn-auth-hold" class="btn-sm" disabled>Authorize Hold</button>
+          </div>
+
+          <div class="table-container">
+            <table id="tbl-holds">
+              <thead>
+                <tr>
+                  <th>Hold</th>
+                  <th>Account</th>
+                  <th class="num">Amount</th>
+                  <th>Expires</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody><tr><td colspan="6" style="text-align: center; color: var(--muted); padding: 24px;">Load token to view holds</td></tr></tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -137,25 +566,100 @@
   <script>
     let token = '';
     let accountsList = [];
+    let holdsList = [];
     let selectedAccountId = null;
 
     const el = id => document.getElementById(id);
+
+    const escapeHtml = str => {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    };
+
+    window.copyText = (text, btn) => {
+      const onSuccess = () => {
+        const orig = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = orig; }, 1500);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(onSuccess).catch(() => fallbackCopy(text, onSuccess));
+      } else {
+        fallbackCopy(text, onSuccess);
+      }
+    };
+
+    const fallbackCopy = (text, callback) => {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch (e) {}
+      document.body.removeChild(ta);
+      if (callback) callback();
+    };
+
+    const showToast = (message, type = 'success') => {
+      const container = el('toast-container');
+      const toast = document.createElement('div');
+      toast.className = `toast toast-${type}`;
+      toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
+      const msgText = typeof message === 'object' ? (message.detail || message.message || String(message)) : String(message);
+      toast.textContent = msgText;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.classList.add('toast-fadeout');
+        setTimeout(() => toast.remove(), 300);
+      }, 4000);
+    };
+
     const showError = msg => {
       const box = el('error-box');
       box.textContent = typeof msg === 'object' ? JSON.stringify(msg, null, 2) : msg;
       box.style.display = 'block';
       el('success-box').style.display = 'none';
+      showToast(msg, 'error');
     };
+
     const showSuccess = msg => {
       const box = el('success-box');
       box.textContent = msg;
       box.style.display = 'block';
       el('error-box').style.display = 'none';
+      showToast(msg, 'success');
     };
+
     const clearAlerts = () => {
       el('error-box').style.display = 'none';
       el('success-box').style.display = 'none';
     };
+
+    const validateTransferForm = () => {
+      const fromAcc = el('tf-from').value;
+      const toAcc = el('tf-to').value;
+      const amount = el('tf-amount').value.trim();
+      const isValid = fromAcc && toAcc && fromAcc !== toAcc && amount.length > 0;
+      el('btn-post-transfer').disabled = !isValid;
+    };
+
+    el('tf-from').addEventListener('change', validateTransferForm);
+    el('tf-to').addEventListener('change', validateTransferForm);
+    el('tf-amount').addEventListener('input', validateTransferForm);
+
+    const validateHoldForm = () => {
+      const accId = el('hold-acc').value;
+      const amount = el('hold-amount').value.trim();
+      const isValid = accId && amount.length > 0;
+      el('btn-auth-hold').disabled = !isValid;
+    };
+
+    el('hold-acc').addEventListener('change', validateHoldForm);
+    el('hold-amount').addEventListener('input', validateHoldForm);
 
     const apiFetch = async (endpoint, options = {}) => {
       if (!token) throw new Error('Dev JWT token is required');
@@ -177,52 +681,125 @@
         accountsList = data;
         renderAccounts();
         updateAccountDropdowns();
+        if (holdsList.length) {
+          renderHolds();
+        }
+        el('try-it-guide').removeAttribute('open');
       } catch (err) { showError(err); }
     };
 
     const renderAccounts = () => {
+      const thead = el('tbl-accounts').querySelector('thead');
       const tbody = el('tbl-accounts').querySelector('tbody');
       if (!accountsList.length) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">No accounts found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color: var(--muted); padding: 24px;">No accounts found</td></tr>';
         return;
       }
-      tbody.innerHTML = accountsList.map(a => `
+      const hasHeld = accountsList.some(a => a.pending_holds !== undefined);
+      thead.innerHTML = `
         <tr>
-          <td><strong>${a.name}</strong><br><small style="color:#64748b">${a.id}</small></td>
-          <td>${a.type}</td>
-          <td>${a.posted_balance}</td>
-          <td>${a.available_balance}</td>
-          <td><button class="secondary" onclick="loadStatement('${a.id}', '${a.name}')" style="padding:4px 8px;font-size:12px;">Statement</button></td>
+          <th>Name</th>
+          <th>Type</th>
+          <th class="num">Posted</th>
+          ${hasHeld ? '<th class="num">Held</th>' : ''}
+          <th class="num">Available</th>
+          <th>Action</th>
         </tr>
-      `).join('');
+      `;
+      tbody.innerHTML = accountsList.map(a => {
+        const isSelected = selectedAccountId === a.id;
+        const shortId = a.id ? a.id.substring(0, 8) : '';
+        return `
+          <tr class="${isSelected ? 'selected-row' : ''}" aria-selected="${isSelected ? 'true' : 'false'}">
+            <td>
+              <div><strong>${escapeHtml(a.name)}</strong></div>
+              <div style="display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted);">
+                <span class="font-mono">${shortId}</span>
+                <button type="button" class="btn-copy" onclick="copyText('${a.id}', this)" title="Copy ID">Copy</button>
+              </div>
+            </td>
+            <td>${escapeHtml(a.type)}</td>
+            <td class="num">${a.posted_balance}</td>
+            ${hasHeld ? `<td class="num">${a.pending_holds}</td>` : ''}
+            <td class="num">${a.available_balance}</td>
+            <td><button class="secondary btn-sm" onclick="loadStatement('${a.id}', '${escapeHtml(a.name)}')">Statement</button></td>
+          </tr>
+        `;
+      }).join('');
     };
 
     const updateAccountDropdowns = () => {
-      const opts = accountsList.map(a => `<option value="${a.id}">${a.name} (${a.currency})</option>`).join('');
-      el('tf-from').innerHTML = opts;
-      el('tf-to').innerHTML = opts;
-      el('hold-acc').innerHTML = opts;
+      const currentFrom = el('tf-from').value;
+      const currentTo = el('tf-to').value;
+      const currentHold = el('hold-acc').value;
+
+      const optsHtml = accountsList.map(a => `<option value="${a.id}">${escapeHtml(a.name)} (${escapeHtml(a.currency)})</option>`).join('');
+
+      el('tf-from').innerHTML = '<option value="" disabled selected>Select account</option>' + optsHtml;
+      el('tf-to').innerHTML = '<option value="" disabled selected>Select account</option>' + optsHtml;
+      el('hold-acc').innerHTML = '<option value="" disabled selected>Select account</option>' + optsHtml;
+
+      if (currentFrom && accountsList.some(a => a.id === currentFrom)) el('tf-from').value = currentFrom;
+      if (currentTo && accountsList.some(a => a.id === currentTo)) el('tf-to').value = currentTo;
+      if (currentHold && accountsList.some(a => a.id === currentHold)) el('hold-acc').value = currentHold;
+
+      validateTransferForm();
+      validateHoldForm();
     };
 
     window.loadStatement = async (accId, accName) => {
       clearAlerts();
       selectedAccountId = accId;
-      el('stmt-acc-name').textContent = `${accName} (${accId})`;
+      renderAccounts();
+      const shortId = accId ? accId.substring(0, 8) : '';
+      el('stmt-acc-name').innerHTML = `<strong>${escapeHtml(accName)}</strong> <span class="font-mono muted" style="font-size:12px;">${shortId}</span> <button type="button" class="btn-copy" onclick="copyText('${accId}', this)">Copy</button>`;
       try {
         const data = await apiFetch(`/api/v1/accounts/${accId}/statement/`);
+        const thead = el('tbl-statement').querySelector('thead');
         const tbody = el('tbl-statement').querySelector('tbody');
+        let tfoot = el('tbl-statement').querySelector('tfoot');
+        if (!tfoot) {
+          tfoot = document.createElement('tfoot');
+          el('tbl-statement').appendChild(tfoot);
+        }
+        tfoot.innerHTML = '';
+
         if (!data.results || !data.results.length) {
-          tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No statement lines found</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color: var(--muted); padding: 24px;">No statement lines found</td></tr>';
           return;
         }
+
+        const hasDate = data.results.some(line => line.posted_at || line.created_at || line.effective_at || line.date);
+        thead.innerHTML = `
+          <tr>
+            <th>Line #</th>
+            ${hasDate ? '<th>Date</th>' : ''}
+            <th>Direction</th>
+            <th class="num">Amount</th>
+            <th class="num">Running Balance</th>
+          </tr>
+        `;
+
         tbody.innerHTML = data.results.map(line => `
           <tr>
-            <td>${line.id}</td>
-            <td>${line.direction}</td>
-            <td>${line.amount}</td>
-            <td>${line.running_balance}</td>
+            <td class="font-mono">${line.id}</td>
+            ${hasDate ? `<td class="muted" style="font-size:12px;">${line.posted_at || line.created_at || line.effective_at || line.date}</td>` : ''}
+            <td><span class="badge badge-${line.direction}">${line.direction}</span></td>
+            <td class="num">${line.amount}</td>
+            <td class="num">${line.running_balance}</td>
           </tr>
         `).join('');
+
+        const lastLine = data.results[data.results.length - 1];
+        if (lastLine && lastLine.running_balance !== undefined) {
+          const colSpan = hasDate ? 4 : 3;
+          tfoot.innerHTML = `
+            <tr>
+              <td colspan="${colSpan}" style="text-align: right; font-weight: 600;">Closing Balance:</td>
+              <td class="num"><strong>${lastLine.running_balance}</strong></td>
+            </tr>
+          `;
+        }
       } catch (err) { showError(err); }
     };
 
@@ -232,41 +809,87 @@
       const url = status ? `/api/v1/holds/?status=${encodeURIComponent(status)}` : '/api/v1/holds/';
       try {
         const holds = await apiFetch(url);
-        renderHolds(holds);
+        holdsList = holds;
+        renderHolds();
       } catch (err) { showError(err); }
     };
 
-    const renderHolds = (holds) => {
+    const renderHolds = () => {
       const tbody = el('tbl-holds').querySelector('tbody');
-      if (!holds.length) {
-        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No holds found</td></tr>';
+      if (!holdsList.length) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color: var(--muted); padding: 24px;">No holds found</td></tr>';
         return;
       }
-      tbody.innerHTML = holds.map(h => `
-        <tr>
-          <td><small>${h.id}</small><br>${h.description || 'Hold'}</td>
-          <td>${h.amount} ${h.currency}<br><small>captured: ${h.captured_amount}</small></td>
-          <td><span class="badge badge-${h.status}">${h.status}</span></td>
-          <td>
-            ${h.status === 'PENDING' ? `
-              <button onclick="captureHoldPrompt('${h.id}', '${h.amount}')" style="padding:4px 8px;font-size:12px;">Capture</button>
-              <button class="danger" onclick="voidHoldPrompt('${h.id}')" style="padding:4px 8px;font-size:12px;">Void</button>
-            ` : '-'}
-          </td>
-        </tr>
-      `).join('');
+      tbody.innerHTML = holdsList.map(h => {
+        const shortHoldId = h.id ? h.id.substring(0, 8) : '';
+        const acc = accountsList.find(a => String(a.id).toLowerCase() === String(h.account_id).toLowerCase());
+        const accountDisplayName = acc ? acc.name : (h.account_id ? h.account_id.substring(0, 8) : '-');
+        const expiresFormatted = h.expires_at ? new Date(h.expires_at).toLocaleString() : '-';
+        return `
+          <tr>
+            <td>
+              <div style="display: flex; align-items: center; gap: 4px;">
+                <span class="font-mono">${shortHoldId}</span>
+                <button type="button" class="btn-copy" onclick="copyText('${h.id}', this)" title="Copy ID">Copy</button>
+              </div>
+              <div class="muted" style="font-size: 12px; margin-top: 2px;">${escapeHtml(h.description || 'Hold')}</div>
+            </td>
+            <td>${escapeHtml(accountDisplayName)}</td>
+            <td class="num">
+              <div>${h.amount} ${escapeHtml(h.currency)}</div>
+              <div class="muted" style="font-size: 11px;">captured: ${h.captured_amount}</div>
+            </td>
+            <td class="muted" style="font-size: 12px;">${expiresFormatted}</td>
+            <td><span class="badge badge-${h.status}">${h.status}</span></td>
+            <td>
+              ${h.status === 'PENDING' ? `
+                <button class="btn-sm" onclick="captureHoldPrompt('${h.id}', '${h.amount}', this)">Capture</button>
+                <button class="btn-sm danger" onclick="voidHoldPrompt('${h.id}', this)">Void</button>
+              ` : '<span class="muted" style="font-size: 12px;">Closed</span>'}
+            </td>
+          </tr>
+        `;
+      }).join('');
     };
 
-    el('btn-set-token').addEventListener('click', () => {
+    el('btn-set-token').addEventListener('click', async () => {
       let raw = el('jwt-token').value.trim();
       if (!raw) return alert('Please paste a JWT token');
       if (raw.toLowerCase().startsWith('bearer ')) {
         raw = raw.substring(7).trim();
       }
-      // Remove any internal linebreaks or spaces copied from terminals
       token = raw.replace(/\s+/g, '');
-      loadAccounts();
-      loadHolds();
+
+      let shortTenant = '';
+      try {
+        const parts = token.split('.');
+        if (parts.length >= 2) {
+          const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+          if (payload.tenant_id) shortTenant = String(payload.tenant_id).substring(0, 8);
+        }
+      } catch (e) {}
+
+      const btn = el('btn-set-token');
+      btn.disabled = true;
+      btn.setAttribute('aria-busy', 'true');
+      try {
+        await loadAccounts();
+        await loadHolds();
+        el('pill-text').textContent = shortTenant ? `Connected \u2022 tenant ${shortTenant}` : 'Connected';
+        el('connection-pill').className = 'pill pill-connected';
+        el('connected-tenant-id').textContent = shortTenant;
+        el('token-input-row').style.display = 'none';
+        el('token-connected-row').style.display = 'flex';
+      } finally {
+        btn.disabled = false;
+        btn.removeAttribute('aria-busy');
+      }
+    });
+
+    el('btn-change-token').addEventListener('click', () => {
+      el('token-input-row').style.display = 'block';
+      el('token-connected-row').style.display = 'none';
+      el('jwt-token').focus();
     });
 
     el('btn-refresh-accounts').addEventListener('click', loadAccounts);
@@ -284,6 +907,10 @@
       if (fromAcc === toAcc) return showError('From and To accounts must be different');
       if (!amount) return showError('Amount is required');
 
+      const btn = el('btn-post-transfer');
+      btn.disabled = true;
+      btn.setAttribute('aria-busy', 'true');
+
       try {
         const idempotencyKey = crypto.randomUUID();
         const body = {
@@ -300,12 +927,16 @@
           body: JSON.stringify(body)
         });
         showSuccess('Transfer posted successfully!');
-        loadAccounts();
+        await loadAccounts();
         if (selectedAccountId) {
           const acc = accountsList.find(a => a.id === selectedAccountId);
           loadStatement(selectedAccountId, acc ? acc.name : '');
         }
       } catch (err) { showError(err); }
+      finally {
+        btn.removeAttribute('aria-busy');
+        validateTransferForm();
+      }
     });
 
     el('btn-auth-hold').addEventListener('click', async () => {
@@ -313,6 +944,10 @@
       const accId = el('hold-acc').value;
       const amount = el('hold-amount').value.trim();
       if (!accId || !amount) return showError('Select account and enter amount');
+
+      const btn = el('btn-auth-hold');
+      btn.disabled = true;
+      btn.setAttribute('aria-busy', 'true');
 
       try {
         const idempotencyKey = crypto.randomUUID();
@@ -331,16 +966,25 @@
           body: JSON.stringify(body)
         });
         showSuccess('Hold authorized successfully!');
-        loadAccounts();
-        loadHolds();
+        await loadAccounts();
+        await loadHolds();
       } catch (err) { showError(err); }
+      finally {
+        btn.disabled = false;
+        btn.removeAttribute('aria-busy');
+        validateHoldForm();
+      }
     });
 
-    window.captureHoldPrompt = async (holdId, currentAmount) => {
+    window.captureHoldPrompt = async (holdId, currentAmount, triggerBtn) => {
       clearAlerts();
       const amount = prompt('Capture amount:', currentAmount);
       if (!amount) return;
       const cashAcc = accountsList.find(a => a.name === 'Cash') || accountsList[0];
+      if (triggerBtn) {
+        triggerBtn.disabled = true;
+        triggerBtn.setAttribute('aria-busy', 'true');
+      }
       try {
         const idempotencyKey = crypto.randomUUID();
         await apiFetch(`/api/v1/holds/${holdId}/capture/`, {
@@ -353,14 +997,24 @@
           })
         });
         showSuccess('Hold captured successfully!');
-        loadAccounts();
-        loadHolds();
+        await loadAccounts();
+        await loadHolds();
       } catch (err) { showError(err); }
+      finally {
+        if (triggerBtn) {
+          triggerBtn.disabled = false;
+          triggerBtn.removeAttribute('aria-busy');
+        }
+      }
     };
 
-    window.voidHoldPrompt = async (holdId) => {
+    window.voidHoldPrompt = async (holdId, triggerBtn) => {
       clearAlerts();
       if (!confirm('Are you sure you want to void this hold?')) return;
+      if (triggerBtn) {
+        triggerBtn.disabled = true;
+        triggerBtn.setAttribute('aria-busy', 'true');
+      }
       try {
         const idempotencyKey = crypto.randomUUID();
         await apiFetch(`/api/v1/holds/${holdId}/void/`, {
@@ -369,9 +1023,15 @@
           body: JSON.stringify({})
         });
         showSuccess('Hold voided successfully!');
-        loadAccounts();
-        loadHolds();
+        await loadAccounts();
+        await loadHolds();
       } catch (err) { showError(err); }
+      finally {
+        if (triggerBtn) {
+          triggerBtn.disabled = false;
+          triggerBtn.removeAttribute('aria-busy');
+        }
+      }
     };
   </script>
 </body>

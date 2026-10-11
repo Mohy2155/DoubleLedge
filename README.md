@@ -424,6 +424,51 @@ cp .env.example .env
 
 make up        # Postgres, Redis, API, Celery worker, Celery beat
 make migrate   # schema + triggers + RLS policies
+make demo-ui   # provisions demo tenant, seeds sample data, prints JWT token & UI URL
+```
+
+Open `http://localhost:8000/demo/` in your browser and paste the printed dev JWT token to explore.
+
+<p align="center">
+  <img src="docs/screenshots/01-overview.png" width="900"
+       alt="Demo UI showing accounts with posted, held and available balances and a holds table">
+</p>
+
+## Demo walkthrough
+
+The demo UI at `/demo/` is a single static page over the public API.
+
+**1. A transfer moves both sides.** Revenue → Cash for 50.0000. Both balances
+update and the statement gains a line with a running balance.
+<p align="center">
+  <img src="docs/screenshots/02-transfer.png" width="900" alt="Transfer posted">
+</p>
+
+**2. A hold reserves funds without posting them.** Authorizing 200.0000 on
+Customer Deposits raises Held to 300 and lowers Available to 550, while Posted
+stays at 850.
+<p align="center">
+  <img src="docs/screenshots/03-hold-authorized.png" width="900" alt="Hold authorized">
+</p>
+
+**3. Capturing part of a hold releases the remainder.** Capturing 60.0000 of the 200.0000 hold credits Cash for 60.0000 and immediately releases the remaining 140.0000 back to Available.
+<p align="center">
+  <img src="docs/screenshots/04-capture.png" width="900" alt="Hold partially captured">
+</p>
+
+**4. Voiding a hold restores Available balance.** Voiding the 100.0000 hold marks it VOIDED and immediately drops Held by 100.0000, returning the reserved funds to Available.
+<p align="center">
+  <img src="docs/screenshots/05-void.png" width="900" alt="Hold voided">
+</p>
+
+**5. Overdraft policy rejects excess holds.** Authorizing 99,999.0000 against Customer Deposits is rejected with `insufficient_funds` without posting anything or modifying balances.
+<p align="center">
+  <img src="docs/screenshots/06-rejection.png" width="900" alt="Hold authorization rejected for insufficient funds">
+</p>
+
+### Automated Stress Demo & Invariant Verification
+
+```bash
 make demo      # seeds a tenant, fires 1,000 concurrent transfers, prints the integrity report
 ```
 
@@ -435,9 +480,9 @@ Deadlock retries: <n>   Idempotent replays: <n>
 Integrity check: debits == credits ✔   balances == recomputed ✔   checkpoint chain ✔
 ```
 
-### Local Demo & API Exploration
+### CLI & API Exploration
 
-Run the management commands to provision a tenant, seed demo data, and explore the API:
+Alternatively, provision tenants and query endpoints directly:
 
 ```bash
 # 1. Provision a demo tenant and get a dev JWT (valid for 24 hours)
@@ -451,11 +496,6 @@ curl -H "Authorization: Bearer <TOKEN>" http://localhost:8000/api/v1/accounts/<A
 
 # 4. Retrieve the seeded hold status
 curl -H "Authorization: Bearer <TOKEN>" http://localhost:8000/api/v1/holds/<HOLD_ID>/
-
-# 5. Open the Demo UI
-# Open http://localhost:8000/demo/ in your browser and paste the dev JWT token.
-# To generate a new token for an existing tenant without re-creating:
-# docker compose run --rm -e DB_USER=postgres -e DB_PASSWORD=postgres -e REQUIRE_RESTRICTED_DB_ROLE=0 api python manage.py create_tenant --tenant_id=<TENANT_ID>
 ```
 
 Other commands:
