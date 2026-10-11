@@ -416,15 +416,24 @@ curl -X POST http://localhost:8000/api/v1/journal-entries/ \
 
 ## Quickstart
 
-Requires Docker and Docker Compose.
+Requires Docker with Compose v2.
 
 ```bash
 git clone https://github.com/<you>/doubleledge && cd doubleledge
-cp .env.example .env
+cp .env.example .env        # PowerShell: Copy-Item .env.example .env
+make demo
+```
 
-make up        # Postgres, Redis, API, Celery worker, Celery beat
-make migrate   # schema + triggers + RLS policies
-make demo-ui   # provisions demo tenant, seeds sample data, prints JWT token & UI URL
+`make demo` generates a dev JWT keypair, starts the stack, creates a demo
+tenant, seeds sample data, and prints the tenant id and a token. Open
+http://localhost:8000/demo/ and paste the token.
+
+No `make` (e.g. Windows)? These three commands are exactly what it runs:
+
+```bash
+docker compose run --rm --no-deps owner python scripts/gen_dev_keys.py
+docker compose up -d --wait
+docker compose run --rm owner python manage.py demo_bootstrap
 ```
 
 Open `http://localhost:8000/demo/` in your browser and paste the printed dev JWT token to explore.
@@ -469,10 +478,10 @@ stays at 850.
 ### Automated Stress Demo & Invariant Verification
 
 ```bash
-make demo      # seeds a tenant, fires 1,000 concurrent transfers, prints the integrity report
+make stress     # seeds a tenant, fires 1,000 concurrent transfers, prints the integrity report
 ```
 
-`make demo` finishes in about a minute and ends with output like:
+`make stress` finishes in about a minute and ends with output like:
 
 ```text
 Posted 1000 entries across 20 accounts (8 threads, hot-account contention on)
@@ -486,10 +495,10 @@ Alternatively, provision tenants and query endpoints directly:
 
 ```bash
 # 1. Provision a demo tenant and get a dev JWT (valid for 24 hours)
-docker compose run --rm -e DB_USER=postgres -e DB_PASSWORD=postgres -e REQUIRE_RESTRICTED_DB_ROLE=0 api python manage.py create_tenant --name="Acme Corp"
+docker compose run --rm owner python manage.py create_tenant --name="Acme Corp"
 
 # 2. Seed chart of accounts, sample transactions, and a hold
-docker compose run --rm -e DB_USER=postgres -e DB_PASSWORD=postgres -e REQUIRE_RESTRICTED_DB_ROLE=0 api python manage.py seed_demo --tenant_id=<TENANT_ID>
+docker compose run --rm owner python manage.py seed_demo --tenant_id=<TENANT_ID>
 
 # 3. Query seeded account details via the API using the dev token
 curl -H "Authorization: Bearer <TOKEN>" http://localhost:8000/api/v1/accounts/<ACCOUNT_ID>/
@@ -501,10 +510,12 @@ curl -H "Authorization: Bearer <TOKEN>" http://localhost:8000/api/v1/holds/<HOLD
 Other commands:
 
 ```bash
+make stress       # 1,000 concurrent transfers + integrity report
 make test         # full suite
-make test-race    # concurrency and crash-safety tests only
-make bench        # load & concurrency benchmark
 make integrity    # manage.py check_ledger_integrity
+make bench        # load & concurrency benchmark
+make stop         # stop containers, keep data
+make down         # stop and WIPE data
 ```
 
 ---

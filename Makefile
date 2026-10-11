@@ -1,32 +1,28 @@
-.PHONY: up down migrate test test-race bench demo demo-ui integrity lint
+.PHONY: up stop down demo stress test bench integrity
 
 up:
 	docker compose up -d
 
+stop:
+	docker compose stop
+
+# WIPES data
 down:
 	docker compose down -v
 
-migrate:
-	docker compose exec -T api python manage.py migrate
+demo:
+	docker compose run --rm --no-deps owner python scripts/gen_dev_keys.py
+	docker compose up -d --wait
+	docker compose run --rm owner python manage.py demo_bootstrap
+
+stress:
+	docker compose run --rm owner python scripts/demo.py
 
 test:
-	docker compose exec -T api pytest
-
-test-race:
-	docker compose exec -T api pytest -m "race"
+	docker compose run --rm owner pytest --create-db -p no:cacheprovider --ignore-glob='*redteam*'
 
 bench:
-	docker compose exec -T -e DB_USER=postgres -e DB_PASSWORD=postgres -e REQUIRE_RESTRICTED_DB_ROLE=0 api python scripts/benchmarks/run.py
-
-demo:
-	docker compose exec -T -e DB_USER=postgres -e DB_PASSWORD=postgres -e REQUIRE_RESTRICTED_DB_ROLE=0 api python scripts/demo.py
-
-demo-ui:
-	docker compose exec -T -e DB_USER=postgres -e DB_PASSWORD=postgres -e REQUIRE_RESTRICTED_DB_ROLE=0 api python scripts/seed_demo_ui.py
+	docker compose run --rm owner python scripts/benchmarks/run.py
 
 integrity:
-	docker compose exec -T -e DB_USER=postgres -e DB_PASSWORD=postgres -e REQUIRE_RESTRICTED_DB_ROLE=0 api python manage.py check_ledger_integrity
-
-lint:
-	ruff check .
-	mypy .
+	docker compose run --rm owner python manage.py check_ledger_integrity
