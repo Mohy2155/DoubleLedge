@@ -600,12 +600,12 @@ The hot-account row is intentionally included: it shows the honest ceiling of ro
 
 ## Roadmap
 
-* **Holds / two-phase postings:** authorize → capture/release, with `available_balance = balance − active holds`
-* **Hot-account sharding:** split a hot account into N sub-accounts with periodic sweep
-* **Read replicas** for statements and point-in-time queries
-* **Multi-currency FX helper:** rate-stamped conversion entries
-* **Per-tenant encryption of `metadata`** and signed audit exports
-* **Scheduled period close** (freeze `effective_at` before a cutoff)
+* [x] ~~**Holds / two-phase postings:** authorize → capture/release, with `available_balance = balance − active holds`~~
+* [x] ~~**Hot-account sharding:** split a hot account into N sub-accounts with periodic sweep~~
+* [ ] **Read replicas** for statements and point-in-time queries
+* [ ] **Multi-currency FX helper:** rate-stamped conversion entries
+* [ ] **Per-tenant encryption of `metadata`** and signed audit exports
+* [ ] **Scheduled period close** (freeze `effective_at` before a cutoff)
 
 ---
 
