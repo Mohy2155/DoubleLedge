@@ -533,7 +533,7 @@ The hot-account row is intentionally included: it shows the honest ceiling of ro
 * **Holds Invariant:**
   * Hold invariant (option 1: `held_amount` plus a DB CHECK), `released_amount` in void/expire webhook payloads
 * **Idempotency Race:**
-  * Idempotency race: one journal entry but a 200 balance delta, still unexplained
+  * **Idempotency race (unconfirmed):** an unreviewed red-team test once reported a balance delta of 200 for a single entry. The original output was not preserved. It was not reproduced in 100 concurrent same-key scenarios (sharded and unsharded) or 40 runs of a faithful re-creation of the original test, all run as the DB owner. Cause unconfirmed; no code change was made.
 * **Database Roles & Permissions:**
   * Default privileges: tables created by migrations after 0012 do not automatically inherit `ledger_runtime` grants unless `ALTER DEFAULT PRIVILEGES` is configured or each new migration adds grants
   * Sequences: granted `USAGE, SELECT` (no `UPDATE` to prevent `setval` sequence resets)
