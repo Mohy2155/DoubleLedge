@@ -10,7 +10,7 @@
 - [x] 3.1 Tests: list endpoints are tenant-scoped, never return shard
       ids, and `/demo/` returns 200.
 - [x] 3.2 Full non-redteam suite green with `--create-db`.
-- [ ] 3.3 Manual: I will click through the UI myself.
+- [x] 3.3 Manual: I will click through the UI myself.
 ## 4. Docs
 - [x] 4.1 README section: how to open the demo.
 
