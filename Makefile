@@ -1,4 +1,4 @@
-.PHONY: up down migrate test test-race bench demo integrity lint
+.PHONY: up down migrate test test-race bench demo demo-ui integrity lint
 
 up:
 	docker compose up -d
@@ -20,6 +20,9 @@ bench:
 
 demo:
 	docker compose exec -T -e DB_USER=postgres -e DB_PASSWORD=postgres -e REQUIRE_RESTRICTED_DB_ROLE=0 api python scripts/demo.py
+
+demo-ui:
+	docker compose exec -T -e DB_USER=postgres -e DB_PASSWORD=postgres -e REQUIRE_RESTRICTED_DB_ROLE=0 api python scripts/seed_demo_ui.py
 
 integrity:
 	docker compose exec -T -e DB_USER=postgres -e DB_PASSWORD=postgres -e REQUIRE_RESTRICTED_DB_ROLE=0 api python manage.py check_ledger_integrity
