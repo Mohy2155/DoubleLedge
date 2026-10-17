@@ -26,6 +26,9 @@ skills/
 .cursor/
 .copilot/
 .gemini/
+graphify-out/
+.graphify/
+
 
 # Build artifacts
 *.egg-info/
