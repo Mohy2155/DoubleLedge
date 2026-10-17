@@ -1,6 +1,8 @@
+import logging
 import random
 import time
 from decimal import Decimal
+from functools import wraps
 
 from django.db import OperationalError, connection, transaction
 from django.utils import timezone
@@ -15,6 +17,7 @@ from ledger.models import (
 from ledger.services.idempotency import get_or_insert_idempotency_key
 from ledger.services.periods import get_cutoff, iso_utc
 
+logger = logging.getLogger(__name__)
 
 class PostingError(Exception):
     pass
@@ -35,19 +38,31 @@ def _direction_to_increase(account: Account) -> str:
         return TransactionLine.Direction.DEBIT
     return TransactionLine.Direction.CREDIT
 
+# deadlock_detected, serialization_failure, lock_not_available
+TRANSIENT_SQLSTATES = ('40P01', '40001', '55P03')
+
+def transient_sqlstate(exc):
+    """The SQLSTATE of a retryable database error, else None. psycopg 3 puts it on the chained cause as `sqlstate`."""
+    sqlstate = getattr(exc.__cause__, 'sqlstate', None)
+    return sqlstate if sqlstate in TRANSIENT_SQLSTATES else None
+
 def retry_on_deadlock(max_retries=5, base_delay=0.1):
     def decorator(func):
+        @wraps(func)
         def wrapper(*args, **kwargs):
+            # Only the transaction's owner retries. Inside a caller's transaction a retry would run in a
+            # savepoint that still holds the caller's locks, and nested retry loops would multiply attempts.
+            if connection.in_atomic_block:
+                return func(*args, **kwargs)
             retries = 0
             while True:
                 try:
                     return func(*args, **kwargs)
                 except OperationalError as e:
-                    # psycopg3 exposes pgcode via e.__cause__.pgcode
-                    cause = getattr(e, '__cause__', None)
-                    pgcode = getattr(cause, 'pgcode', None)
-                    if pgcode in ('40P01', '40001', '55P03') and retries < max_retries:
+                    sqlstate = transient_sqlstate(e)
+                    if sqlstate and retries < max_retries:
                         retries += 1
+                        logger.warning(f"{func.__name__}: transient error {sqlstate}, retry {retries}/{max_retries}")
                         time.sleep(base_delay * (2 ** retries) + random.uniform(0, 0.1))
                     else:
                         raise

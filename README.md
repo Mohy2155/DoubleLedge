@@ -199,8 +199,8 @@ def post_entry(tenant, payload):
 ```
 
 * **Deterministic lock order.** Accounts are always locked in ascending primary-key order, which eliminates the classic *A→B vs B→A* lock-ordering deadlock between concurrent postings.
-* **Deadlock Mitigation.** While deterministic lock ordering prevents deadlocks between concurrent postings, other interactions (e.g., foreign-key locks) may still deadlock. The service retries on `40P01` and `40001` with bounded attempts and jittered backoff, exposing the retry count as a metric.
-* **Bounded waits.** `lock_timeout` returns a fast `503 Retry-After` to prevent request queueing during prolonged contention.
+* **Deadlock Mitigation.** While deterministic lock ordering prevents deadlocks between concurrent postings, other interactions (e.g., foreign-key locks, or a shard rollup that holds its locks across several shards) may still deadlock. Deadlocks (`40P01`), serialization failures (`40001`) and lock timeouts (`55P03`) are retried with bounded attempts and jittered backoff, and each retry is logged as a warning. Only the code that started the transaction retries it: an API request retries its whole transaction up to 3 times, and a direct service call with no open transaction retries itself. A service called inside its caller's transaction runs once and leaves the retry to that caller, so retries never stack.
+* **Bounded waits.** Each attempt waits at most 2s for a row lock (`lock_timeout`). If the request's retries run out, the API returns `503 lock_timeout` with `Retry-After`, which stops requests from queueing during prolonged contention.
 * **Hot accounts** (e.g. a platform fee account touched by every transaction) serialize on their row lock. This is a known trade-off, with a sub-account sharding strategy listed in the roadmap.
 
 ### 4. Idempotency that survives crashes and races
@@ -459,7 +459,7 @@ curl -X POST http://localhost:8000/api/v1/journal-entries/ \
 | `422` | `invalid_rate_as_of` | `rate_as_of` is in the future |
 | `422` | `invalid_account` | An FX trading account named as a conversion's source or destination |
 | `429` | `rate_limited` | Per-tenant token bucket exceeded |
-| `503` | `lock_timeout` | Hot-account contention; retry per `Retry-After` |
+| `503` | `lock_timeout` | Lock contention or a deadlock persisted through the request's retries; retry per `Retry-After` |
 
 ---
 
@@ -482,7 +482,7 @@ curl -X POST http://localhost:8000/api/v1/journal-entries/ \
   2. Each `accounts.balance` equals the balance recomputed from its lines
   3. The checkpoint hash chain is intact
   
-  Failures raise an alert and a metric; the check can also `--repair` the cache (never the lines).
+  Drift is logged at `CRITICAL` and recorded in a reconciliation report.
 * **Tamper-evident checkpoints.** Periodically, each tenant's newly-posted lines are hashed into a batch hash chained to the previous checkpoint. A hash chain on *every* write would serialize all postings per tenant, so DoubleLedge seals in batches instead. Any later edit to history breaks the chain on the next verification.
 * **Point-in-time balances** as of system time (`posted_at`), using periodic balance snapshots to avoid scanning full history.
 
@@ -492,9 +492,7 @@ curl -X POST http://localhost:8000/api/v1/journal-entries/ \
 
 **Operability**
 
-* Structured JSON logs with request and tenant IDs
-* Prometheus metrics: posting latency, lock wait time, deadlock retries, idempotent replays, reconciliation drift (should always be 0)
-* OpenTelemetry tracing across API → DB → Celery
+* Structured JSON logs
 * Per-tenant rate limiting (Redis token bucket)
 * OpenAPI schema and a Swagger UI at `/api/docs/`
 
