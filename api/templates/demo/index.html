@@ -411,12 +411,13 @@
     </header>
 
     <details id="try-it-guide" class="try-it-guide" open>
-      <summary><strong>Try it</strong> <span class="muted">(collapsible 4-step guide)</span></summary>
+      <summary><strong>Try it</strong> <span class="muted">(collapsible 5-step guide)</span></summary>
       <ol class="steps-list">
         <li><strong>Post a transfer</strong> between two accounts and watch both balances change.</li>
         <li><strong>Authorize a hold:</strong> Available drops, Posted does not.</li>
         <li><strong>Capture part of a hold:</strong> the remainder is released immediately.</li>
         <li><strong>Void another hold:</strong> its amount returns to Available.</li>
+        <li><strong>Convert currency</strong> from Cash to Cash EUR: each currency stays balanced through its FX Trading account.</li>
       </ol>
     </details>
 
@@ -454,7 +455,7 @@
               <thead>
                 <tr>
                   <th>Name</th>
-                  <th>Type</th>
+                  <th>Type / Ccy</th>
                   <th class="num">Posted</th>
                   <th class="num">Available</th>
                   <th>Action</th>
@@ -480,7 +481,7 @@
             </select>
           </div>
           <div class="form-group">
-            <label for="tf-amount">Amount (USD):</label>
+            <label for="tf-amount" id="tf-amount-label">Amount:</label>
             <input type="text" id="tf-amount" placeholder="e.g. 50.0000" />
           </div>
           <div class="form-group">
@@ -488,7 +489,54 @@
             <input type="text" id="tf-desc" placeholder="e.g. Demo transfer" value="Demo transfer" />
           </div>
           <p class="helper-text">Credits the first account and debits the second; the effect on each balance depends on its account type.</p>
+          <p class="helper-text" id="tf-ccy-hint" style="display: none; color: var(--warn);"></p>
           <button id="btn-post-transfer" disabled>Post Transfer</button>
+        </div>
+
+        <div class="card" id="convert-card">
+          <h2>Convert Currency</h2>
+          <div class="form-group">
+            <label for="fx-from">From Account:</label>
+            <select id="fx-from">
+              <option value="" disabled selected>Select account</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="fx-to">To Account:</label>
+            <select id="fx-to">
+              <option value="" disabled selected>Select account</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="fx-amount" id="fx-amount-label">Amount:</label>
+            <input type="text" id="fx-amount" placeholder="e.g. 100.0000" />
+          </div>
+          <div class="form-group">
+            <label for="fx-rate" id="fx-rate-label">Rate:</label>
+            <input type="text" id="fx-rate" placeholder="e.g. 0.92" />
+          </div>
+          <div class="form-group">
+            <label for="fx-source">Rate Source:</label>
+            <input type="text" id="fx-source" value="demo" maxlength="64" />
+          </div>
+          <p class="helper-text">Decreases the first account by the amount and increases the second by amount &times; rate (half-up to 4 places). Each currency is offset in its FX Trading account, so both stay balanced.</p>
+          <button id="btn-convert" disabled>Convert</button>
+
+          <h3 style="margin-top: 16px;">Recent Conversions</h3>
+          <div class="table-container">
+            <table id="tbl-conversions">
+              <thead>
+                <tr>
+                  <th class="num">From</th>
+                  <th class="num">To</th>
+                  <th class="num">Rate</th>
+                  <th>Source</th>
+                  <th>Rate As Of</th>
+                </tr>
+              </thead>
+              <tbody><tr><td colspan="5" style="text-align: center; color: var(--muted); padding: 24px;">Load token to view conversions</td></tr></tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -537,7 +585,7 @@
               </select>
             </div>
             <div class="form-group">
-              <label for="hold-amount">Amount (USD):</label>
+              <label for="hold-amount" id="hold-amount-label">Amount:</label>
               <input type="text" id="hold-amount" placeholder="e.g. 25.0000" />
             </div>
             <button id="btn-auth-hold" class="btn-sm" disabled>Authorize Hold</button>
@@ -567,6 +615,7 @@
     let token = '';
     let accountsList = [];
     let holdsList = [];
+    let conversionsList = [];
     let selectedAccountId = null;
 
     const el = id => document.getElementById(id);
@@ -639,11 +688,27 @@
       el('success-box').style.display = 'none';
     };
 
+    const currencyOf = accId => {
+      const acc = accountsList.find(a => a.id === accId);
+      return acc ? acc.currency : '';
+    };
+
+    const amountLabel = ccy => ccy ? `Amount (${ccy}):` : 'Amount:';
+
     const validateTransferForm = () => {
       const fromAcc = el('tf-from').value;
       const toAcc = el('tf-to').value;
       const amount = el('tf-amount').value.trim();
-      const isValid = fromAcc && toAcc && fromAcc !== toAcc && amount.length > 0;
+      const fromCcy = currencyOf(fromAcc);
+      const toCcy = currencyOf(toAcc);
+      const mixedCurrencies = Boolean(fromCcy && toCcy && fromCcy !== toCcy);
+      el('tf-amount-label').textContent = amountLabel(fromCcy || toCcy);
+      const hint = el('tf-ccy-hint');
+      hint.style.display = mixedCurrencies ? 'block' : 'none';
+      hint.innerHTML = mixedCurrencies
+        ? `These accounts use different currencies (${escapeHtml(fromCcy)} and ${escapeHtml(toCcy)}). Use <a href="#convert-card">Convert Currency</a> instead.`
+        : '';
+      const isValid = fromAcc && toAcc && fromAcc !== toAcc && !mixedCurrencies && amount.length > 0;
       el('btn-post-transfer').disabled = !isValid;
     };
 
@@ -654,12 +719,30 @@
     const validateHoldForm = () => {
       const accId = el('hold-acc').value;
       const amount = el('hold-amount').value.trim();
+      el('hold-amount-label').textContent = amountLabel(currencyOf(accId));
       const isValid = accId && amount.length > 0;
       el('btn-auth-hold').disabled = !isValid;
     };
 
     el('hold-acc').addEventListener('change', validateHoldForm);
     el('hold-amount').addEventListener('input', validateHoldForm);
+
+    const validateConvertForm = () => {
+      const fromCcy = currencyOf(el('fx-from').value);
+      const toCcy = currencyOf(el('fx-to').value);
+      const amount = el('fx-amount').value.trim();
+      const rate = el('fx-rate').value.trim();
+      const crossCurrency = Boolean(fromCcy && toCcy && fromCcy !== toCcy);
+      el('fx-amount-label').textContent = amountLabel(fromCcy);
+      el('fx-rate-label').textContent = crossCurrency ? `Rate (${toCcy} per 1 ${fromCcy}):` : 'Rate:';
+      const isValid = crossCurrency && amount.length > 0 && rate.length > 0;
+      el('btn-convert').disabled = !isValid;
+    };
+
+    el('fx-from').addEventListener('change', validateConvertForm);
+    el('fx-to').addEventListener('change', validateConvertForm);
+    el('fx-amount').addEventListener('input', validateConvertForm);
+    el('fx-rate').addEventListener('input', validateConvertForm);
 
     const apiFetch = async (endpoint, options = {}) => {
       if (!token) throw new Error('Dev JWT token is required');
@@ -699,7 +782,7 @@
       thead.innerHTML = `
         <tr>
           <th>Name</th>
-          <th>Type</th>
+          <th>Type / Ccy</th>
           <th class="num">Posted</th>
           ${hasHeld ? '<th class="num">Held</th>' : ''}
           <th class="num">Available</th>
@@ -718,7 +801,10 @@
                 <button type="button" class="btn-copy" onclick="copyText('${a.id}', this)" title="Copy ID">Copy</button>
               </div>
             </td>
-            <td>${escapeHtml(a.type)}</td>
+            <td>
+              <div>${escapeHtml(a.type)}</div>
+              <div class="font-mono muted" style="font-size: 12px;">${escapeHtml(a.currency)}</div>
+            </td>
             <td class="num">${a.posted_balance}</td>
             ${hasHeld ? `<td class="num">${a.pending_holds}</td>` : ''}
             <td class="num">${a.available_balance}</td>
@@ -732,19 +818,26 @@
       const currentFrom = el('tf-from').value;
       const currentTo = el('tf-to').value;
       const currentHold = el('hold-acc').value;
+      const currentFxFrom = el('fx-from').value;
+      const currentFxTo = el('fx-to').value;
 
       const optsHtml = accountsList.map(a => `<option value="${a.id}">${escapeHtml(a.name)} (${escapeHtml(a.currency)})</option>`).join('');
 
       el('tf-from').innerHTML = '<option value="" disabled selected>Select account</option>' + optsHtml;
       el('tf-to').innerHTML = '<option value="" disabled selected>Select account</option>' + optsHtml;
       el('hold-acc').innerHTML = '<option value="" disabled selected>Select account</option>' + optsHtml;
+      el('fx-from').innerHTML = '<option value="" disabled selected>Select account</option>' + optsHtml;
+      el('fx-to').innerHTML = '<option value="" disabled selected>Select account</option>' + optsHtml;
 
       if (currentFrom && accountsList.some(a => a.id === currentFrom)) el('tf-from').value = currentFrom;
       if (currentTo && accountsList.some(a => a.id === currentTo)) el('tf-to').value = currentTo;
       if (currentHold && accountsList.some(a => a.id === currentHold)) el('hold-acc').value = currentHold;
+      if (currentFxFrom && accountsList.some(a => a.id === currentFxFrom)) el('fx-from').value = currentFxFrom;
+      if (currentFxTo && accountsList.some(a => a.id === currentFxTo)) el('fx-to').value = currentFxTo;
 
       validateTransferForm();
       validateHoldForm();
+      validateConvertForm();
     };
 
     window.loadStatement = async (accId, accName) => {
@@ -852,6 +945,30 @@
       }).join('');
     };
 
+    const loadConversions = async () => {
+      try {
+        conversionsList = await apiFetch('/api/v1/fx-conversions/');
+        renderConversions();
+      } catch (err) { showError(err); }
+    };
+
+    const renderConversions = () => {
+      const tbody = el('tbl-conversions').querySelector('tbody');
+      if (!conversionsList.length) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color: var(--muted); padding: 24px;">No conversions yet</td></tr>';
+        return;
+      }
+      tbody.innerHTML = conversionsList.map(c => `
+        <tr>
+          <td class="num">${escapeHtml(c.from_amount)} ${escapeHtml(c.from_currency)}</td>
+          <td class="num">${escapeHtml(c.to_amount)} ${escapeHtml(c.to_currency)}</td>
+          <td class="num">${escapeHtml(c.rate)}</td>
+          <td>${escapeHtml(c.rate_source || '-')}</td>
+          <td class="muted" style="font-size: 12px;">${c.rate_as_of ? new Date(c.rate_as_of).toLocaleString() : '-'}</td>
+        </tr>
+      `).join('');
+    };
+
     el('btn-set-token').addEventListener('click', async () => {
       let raw = el('jwt-token').value.trim();
       if (!raw) return alert('Please paste a JWT token');
@@ -875,6 +992,7 @@
       try {
         await loadAccounts();
         await loadHolds();
+        await loadConversions();
         el('pill-text').textContent = shortTenant ? `Connected \u2022 tenant ${shortTenant}` : 'Connected';
         el('connection-pill').className = 'pill pill-connected';
         el('connected-tenant-id').textContent = shortTenant;
@@ -955,7 +1073,7 @@
         const body = {
           account_id: accId,
           amount: String(amount),
-          currency: 'USD',
+          currency: currencyOf(accId),
           reference_id: `hold-${Date.now()}`,
           description: 'Demo hold authorization',
           expires_at: expiresAt
@@ -973,6 +1091,48 @@
         btn.disabled = false;
         btn.removeAttribute('aria-busy');
         validateHoldForm();
+      }
+    });
+
+    el('btn-convert').addEventListener('click', async () => {
+      clearAlerts();
+      const fromAcc = el('fx-from').value;
+      const toAcc = el('fx-to').value;
+      const amount = el('fx-amount').value.trim();
+      const rate = el('fx-rate').value.trim();
+      const rateSource = el('fx-source').value.trim();
+
+      const btn = el('btn-convert');
+      btn.disabled = true;
+      btn.setAttribute('aria-busy', 'true');
+
+      try {
+        const idempotencyKey = crypto.randomUUID();
+        const body = {
+          reference_id: `fx-${Date.now()}`,
+          from_account_id: fromAcc,
+          to_account_id: toAcc,
+          from_amount: String(amount),
+          rate: String(rate),
+          rate_source: rateSource
+        };
+        const c = await apiFetch('/api/v1/fx-conversions/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+          body: JSON.stringify(body)
+        });
+        // Show the API's numbers as returned; the page never computes the converted amount itself.
+        showSuccess(`Converted ${c.from_amount} ${c.from_currency} → ${c.to_amount} ${c.to_currency} @ ${c.rate}`);
+        await loadAccounts();
+        await loadConversions();
+        if (selectedAccountId && c.lines.some(l => l.account_id === selectedAccountId)) {
+          const acc = accountsList.find(a => a.id === selectedAccountId);
+          loadStatement(selectedAccountId, acc ? acc.name : '');
+        }
+      } catch (err) { showError(err); }
+      finally {
+        btn.removeAttribute('aria-busy');
+        validateConvertForm();
       }
     });
 

@@ -107,7 +107,7 @@ CHECK (allow_negative OR balance >= 0)
 
 ### Currency
 
-Each account has exactly one ISO 4217 currency. An entry may span currencies only if it balances **within each currency**; FX is modeled via paired lines against a conversion account per currency. Amounts are validated against the currency's minor-unit exponent (e.g., JPY has 0 decimals, USD has 2, KWD has 3).
+Each account has exactly one ISO 4217 currency. An entry may span currencies only if it balances **within each currency**; FX is modeled via paired lines against a trading account per currency (see [Multi-currency conversions](#8-multi-currency-conversions)). Amounts are validated against the currency's minor-unit exponent (e.g., JPY has 0 decimals, USD has 2, KWD has 3).
 
 ---
 
@@ -290,6 +290,25 @@ Statements and balances (current and `as_of`) are the heavy reads. When `DB_REPL
 * **Observability.** Routed responses carry `Read-Source: replica|primary`.
 * **No router.** Routing is explicit (`.using(alias)`) in the two read paths. A global Django router would also route `select_for_update()` and reads inside write paths.
 
+### 8. Multi-currency conversions
+
+`POST /fx-conversions/` moves value between two of a tenant's accounts in different currencies, at a rate the client supplies. A conversion is an ordinary journal entry, so statements, balances, reversals, webhooks and reconciliation handle it with no special cases.
+
+* **Trading accounts keep each currency balanced.** Each tenant has one `FX Trading <CCY>` account per currency (`EQUITY`, negative balance allowed). The first conversion that needs one creates it, with the deterministic id `uuid5(tenant_id, "fx_trading:<CCY>")`. Converting 100.00 from Cash (USD) to Cash EUR at `0.9234` posts one entry with four lines:
+
+  | Account | Debit | Credit |
+  | --- | --- | --- |
+  | Cash (USD) | | 100.0000 |
+  | FX Trading USD | 100.0000 | |
+  | FX Trading EUR | | 92.3400 |
+  | Cash EUR | 92.3400 | |
+
+  USD nets to zero and EUR nets to zero, so the per-currency balance trigger needs no exception. The source decreases and the destination increases on their normal side, so a liability source is debited instead.
+* **Concurrency.** Two first conversions in the same currencies insert the trading accounts with `ON CONFLICT DO NOTHING` in id order, so one waits for the other instead of deadlocking. Every conversion locks its currencies' trading account rows, so a tenant's conversions in one currency serialize, the same trade-off as any hot account.
+* **Rounding.** `to_amount = from_amount × rate`, rounded half-up to 4 places in a context wide enough for the product to be exact. `CHECK (to_amount = round(from_amount * rate, 4))` holds the database to the same rule. A result that rounds to zero or does not fit `NUMERIC(19,4)` is rejected with `invalid_amount`.
+* **Rate stamp.** The append-only `fx_conversions` table records both accounts and currencies, both amounts, the exact rate (`NUMERIC(28,12)`), `rate_source`, `rate_as_of` and the journal entry. It has RLS, immutability triggers, and composite foreign keys to the entry and both accounts. Reversing the entry restores all four balances and leaves the stamp in place.
+* **Per-currency pre-check.** `post_entry` also checks the balance per currency once the accounts are locked. An entry that balances overall but not within one currency now fails with `422 unbalanced_entry` before anything is written. It used to reach the commit-time trigger and return `422 integrity_error`. The trigger stays as the backstop.
+
 ---
 
 ## Schema
@@ -378,8 +397,26 @@ All endpoints are under `/api/v1`, authenticated with a short-lived RS256 JWT ca
 | `POST` | `/webhook-endpoints/` | Register a webhook (HMAC-signed deliveries) |
 | `POST` | `/period-closes/` | Close the books before `cutoff` (idempotent) |
 | `GET` | `/period-closes/` | Current cutoff and close history, newest first |
+| `POST` | `/fx-conversions/` | Convert between currencies at a supplied rate (idempotent) |
+| `GET` | `/fx-conversions/` | Recent conversions with their rate stamps, newest first (up to 100) |
+| `GET` | `/fx-conversions/{id}/` | One conversion with its rate stamp and entry lines |
 
 `POST /journal-entries/` accepts an optional `effective_at` (ISO 8601 with a UTC offset, not in the future) to backdate an entry into an open period. Omit it to post at the current time. Entry responses and `entry.*` webhooks include `effective_at`.
+
+`POST /fx-conversions/` takes `reference_id`, `from_account_id`, `to_account_id`, `from_amount` and `rate`, with the amount and rate as JSON strings. Optional fields are `rate_source` (up to 64 characters), `rate_as_of` (not in the future, defaults to now), `description` and `effective_at`. The response has the rate stamp, both amounts and currencies, `journal_entry_id`, `effective_at`, and the entry's four lines with each line's `currency` (see [Multi-currency conversions](#8-multi-currency-conversions)).
+
+```bash
+curl -X POST http://localhost:8000/api/v1/fx-conversions/ \
+  -H "Authorization: Bearer <tenant_jwt>" \
+  -H "Idempotency-Key: 4f9a2c7e-1d3b-4e8f-9a6c-5b2d7e1f3a90" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "reference_id": "FX_2026_10_16_001",
+    "from_account_id": "<cash-usd>", "to_account_id": "<cash-eur>",
+    "from_amount": "100.00", "rate": "0.9234",
+    "rate_source": "ECB", "rate_as_of": "2026-10-16T16:00:00Z"
+  }'
+```
 
 `/accounts/{id}/statement/` and `/accounts/{id}/balance/` accept `?consistency=bounded` (the default) or `strong`, and report the database that served them in the `Read-Source` header (see [Read replicas](#7-read-replicas)).
 
@@ -416,6 +453,11 @@ curl -X POST http://localhost:8000/api/v1/journal-entries/ \
 | `422` | `invalid_effective_at` | `effective_at` is in the future |
 | `422` | `period_closed` | `effective_at` is before the tenant's period-close cutoff |
 | `422` | `invalid_period_cutoff` | Close cutoff is in the future or does not advance the current cutoff |
+| `422` | `invalid_amount` | Amount is not positive, or a converted amount rounds to zero or exceeds `NUMERIC(19,4)` |
+| `422` | `same_currency` | Conversion between two accounts in the same currency |
+| `422` | `invalid_rate` | Rate is not a positive decimal string that fits `NUMERIC(28,12)` (at most 12 decimal places) |
+| `422` | `invalid_rate_as_of` | `rate_as_of` is in the future |
+| `422` | `invalid_account` | An FX trading account named as a conversion's source or destination |
 | `429` | `rate_limited` | Per-tenant token bucket exceeded |
 | `503` | `lock_timeout` | Hot-account contention; retry per `Retry-After` |
 
@@ -486,7 +528,7 @@ To also run a streaming read replica, use `make replica`. Without `make`, run `d
 
 <p align="center">
   <img src="docs/screenshots/01-overview.png" width="900"
-       alt="Demo UI showing accounts with posted, held and available balances and a holds table">
+       alt="Demo UI showing accounts with their currencies and posted, held and available balances, and a holds table">
 </p>
 
 ## Demo walkthrough
@@ -519,6 +561,11 @@ stays at 850.
 **5. Overdraft policy rejects excess holds.** Authorizing 99,999.0000 against Customer Deposits is rejected with `insufficient_funds` without posting anything or modifying balances.
 <p align="center">
   <img src="docs/screenshots/06-rejection.png" width="900" alt="Hold authorization rejected for insufficient funds">
+</p>
+
+**6. A currency conversion keeps each currency balanced.** Converting 100.0000 from Cash to Cash EUR at a rate of 0.92 shows `100.0000 USD → 92.0000 EUR @ 0.92`. Cash falls by 100.0000 and Cash EUR rises by 92.0000. Two new accounts appear: FX Trading USD at -100.0000 and FX Trading EUR at 92.0000, so USD and EUR each net to zero. The conversion tops the Recent Conversions table with its rate stamp. A transfer between Cash and Cash EUR stays disabled, with a hint that points to the conversion form.
+<p align="center">
+  <img src="docs/screenshots/07-convert.png" width="600" alt="Convert Currency form after converting 100 USD to 92 EUR, with the conversion in Recent Conversions">
 </p>
 
 ### Automated Stress Demo & Invariant Verification
@@ -649,7 +696,7 @@ The hot-account row is intentionally included: it shows the honest ceiling of ro
 * [x] ~~**Holds / two-phase postings:** authorize → capture/release, with `available_balance = balance − active holds`~~
 * [x] ~~**Hot-account sharding:** split a hot account into N sub-accounts with periodic sweep~~
 * [x] ~~**Read replicas** for statements and point-in-time queries~~
-* [ ] **Multi-currency FX helper:** rate-stamped conversion entries
+* [x] ~~**Multi-currency FX helper:** rate-stamped conversion entries~~
 * [ ] **Per-tenant encryption of `metadata`** and signed audit exports
 * [x] ~~**Scheduled period close** (freeze `effective_at` before a cutoff)~~
 

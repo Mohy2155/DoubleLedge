@@ -143,6 +143,26 @@ class HoldCaptureSerializer(serializers.Serializer):
     reference_id = serializers.CharField(max_length=255)
     description = serializers.CharField(max_length=255, required=False, default='')
 
+class UnparsedField(serializers.Field):
+    """Passes the value through as sent, for fields the service validates itself."""
+    def to_internal_value(self, data):
+        return data
+
+    def to_representation(self, value):
+        return value
+
+class FxConversionCreateSerializer(serializers.Serializer):
+    reference_id = serializers.CharField(max_length=255)
+    description = serializers.CharField(max_length=255, required=False, allow_blank=True, default='')
+    from_account_id = serializers.UUIDField()
+    to_account_id = serializers.UUIDField()
+    from_amount = StrictStringDecimalField(max_digits=19, decimal_places=4)
+    # ledger.services.fx.parse_rate validates it, so every bad rate (even a JSON number) is 422 invalid_rate.
+    rate = UnparsedField(allow_null=True)
+    rate_source = serializers.CharField(max_length=64, required=False, allow_blank=True, default='')
+    rate_as_of = AwareDateTimeField(required=False)
+    effective_at = AwareDateTimeField(required=False)
+
 class PeriodCloseSerializer(serializers.Serializer):
     id = serializers.UUIDField(read_only=True)
     cutoff = serializers.DateTimeField(read_only=True)

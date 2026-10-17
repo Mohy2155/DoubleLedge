@@ -217,6 +217,26 @@ class PeriodClose(models.Model):
         managed = False
         db_table = 'period_closes'
 
+class FxConversion(models.Model):
+    """Append-only rate stamp for one conversion entry; written only by ledger.services.fx.convert."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey(Tenant, on_delete=models.PROTECT)
+    journal_entry = models.OneToOneField(JournalEntry, on_delete=models.PROTECT, related_name='fx_conversion')
+    from_account = models.ForeignKey(Account, on_delete=models.PROTECT, related_name='+')
+    to_account = models.ForeignKey(Account, on_delete=models.PROTECT, related_name='+')
+    from_currency = models.CharField(max_length=3)
+    to_currency = models.CharField(max_length=3)
+    from_amount = models.DecimalField(max_digits=19, decimal_places=4)
+    to_amount = models.DecimalField(max_digits=19, decimal_places=4)
+    rate = models.DecimalField(max_digits=28, decimal_places=12)
+    rate_source = models.TextField(default='')
+    rate_as_of = models.DateTimeField()
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        managed = False
+        db_table = 'fx_conversions'
+
 class Hold(models.Model):
     class Status(models.TextChoices):
         PENDING = 'PENDING'

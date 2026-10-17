@@ -9,7 +9,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from rest_framework.test import APIClient
 
-from ledger.models import Account, Tenant
+from ledger.models import Account, IdempotencyKey, JournalEntry, Tenant, TransactionLine
 
 private_key = rsa.generate_private_key(
     public_exponent=65537,
@@ -111,6 +111,42 @@ def test_reverse_entry(api_client, auth_headers, accounts):
     res_rev_again = api_client.post(f'/api/v1/journal-entries/{entry_id}/reverse/', data=rev_payload, format='json', HTTP_IDEMPOTENCY_KEY='idem_rev3', **auth_headers)
     assert res_rev_again.status_code == 409
     assert res_rev_again.data['error']['code'] == 'already_reversed'
+
+@pytest.mark.django_db
+def test_entry_unbalanced_within_a_currency_is_rejected(api_client, auth_headers, tenant):
+    usd = Account.objects.create(tenant=tenant, name="Bank USD", type=Account.Type.ASSET, currency="USD", allow_negative=True)
+    eur = Account.objects.create(tenant=tenant, name="Bank EUR", type=Account.Type.ASSET, currency="EUR", allow_negative=True)
+    payload = {
+        "reference_id": "tx_mixed",
+        "lines": [
+            {"account_id": str(usd.id), "amount": "10.0000", "direction": "DEBIT"},
+            {"account_id": str(eur.id), "amount": "10.0000", "direction": "CREDIT"}
+        ]
+    }
+    res = api_client.post('/api/v1/journal-entries/', data=payload, format='json', HTTP_IDEMPOTENCY_KEY='idem_mixed', **auth_headers)
+    assert res.status_code == 422
+    assert res.data['error']['code'] == 'unbalanced_entry'
+    assert not JournalEntry.objects.filter(tenant=tenant).exists()
+    assert not TransactionLine.objects.filter(tenant=tenant).exists()
+    assert not IdempotencyKey.objects.filter(tenant=tenant).exists()
+
+@pytest.mark.django_db
+def test_entry_balanced_in_each_currency_is_posted(api_client, auth_headers, tenant, accounts):
+    asset, revenue = accounts
+    eur_asset = Account.objects.create(tenant=tenant, name="Bank EUR", type=Account.Type.ASSET, currency="EUR")
+    eur_revenue = Account.objects.create(tenant=tenant, name="Sales EUR", type=Account.Type.REVENUE, currency="EUR")
+    payload = {
+        "reference_id": "tx_two_ccy",
+        "lines": [
+            {"account_id": str(asset.id), "amount": "10.0000", "direction": "DEBIT"},
+            {"account_id": str(revenue.id), "amount": "10.0000", "direction": "CREDIT"},
+            {"account_id": str(eur_asset.id), "amount": "5.0000", "direction": "DEBIT"},
+            {"account_id": str(eur_revenue.id), "amount": "5.0000", "direction": "CREDIT"}
+        ]
+    }
+    res = api_client.post('/api/v1/journal-entries/', data=payload, format='json', HTTP_IDEMPOTENCY_KEY='idem_two_ccy', **auth_headers)
+    assert res.status_code == 201
+    assert len(res.data['lines']) == 4
 
 @pytest.mark.django_db
 def test_get_account_balance(api_client, auth_headers, accounts):

@@ -5,7 +5,7 @@ from django.db.models import Sum, F
 
 from ledger.models import Account, Hold, OutboxEvent, IdempotencyKey
 from ledger.services.idempotency import get_or_insert_idempotency_key
-from ledger.services.posting import post_entry, retry_on_deadlock
+from ledger.services.posting import _direction_to_decrease, post_entry, retry_on_deadlock
 
 class HoldError(Exception):
     pass
@@ -98,18 +98,6 @@ def authorize_hold(tenant, payload: dict, idempotency_key: str, request_hash: by
     key_row.save(update_fields=['response_code', 'response_body'])
 
     return response_code, response_body, False
-
-def _direction_to_decrease(account: Account) -> str:
-    from ledger.models import TransactionLine
-    if account.type in (Account.Type.ASSET, Account.Type.EXPENSE):
-        return TransactionLine.Direction.CREDIT
-    return TransactionLine.Direction.DEBIT
-
-def _direction_to_increase(account: Account) -> str:
-    from ledger.models import TransactionLine
-    if account.type in (Account.Type.ASSET, Account.Type.EXPENSE):
-        return TransactionLine.Direction.DEBIT
-    return TransactionLine.Direction.CREDIT
 
 @retry_on_deadlock(max_retries=3, base_delay=0.05)
 @transaction.atomic
