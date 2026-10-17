@@ -482,7 +482,7 @@ docker compose run --rm owner python manage.py demo_bootstrap
 
 Open `http://localhost:8000/demo/` in your browser and paste the printed dev JWT token to explore.
 
-To also run a streaming read replica, use `make replica`. Without `make`, run `docker compose -f docker-compose.yml -f docker-compose.replica.yml up -d --wait`. This clones the running primary, which also works on an existing data volume, and the API serves statements and balances from the replica while it is fresh. Run plain `docker compose up -d` to switch back. The primary is never reconfigured or recreated either way.
+To also run a streaming read replica, use `make replica`. Without `make`, run `docker compose -f docker-compose.yml -f docker-compose.replica.yml up -d --wait`. This clones the running primary, which also works on an existing data volume, and the API serves statements and balances from the replica while it is fresh. Run plain `docker compose up -d` to switch back. The primary is never reconfigured or recreated either way. If the primary's data was wiped since the replica last ran, the replica detects this from the database ID and re-clones itself on start, so it never serves a copy of a database that no longer exists.
 
 <p align="center">
   <img src="docs/screenshots/01-overview.png" width="900"
@@ -561,7 +561,7 @@ make test         # full suite
 make integrity    # manage.py check_ledger_integrity
 make bench        # load & concurrency benchmark
 make stop         # stop containers, keep data
-make down         # stop and WIPE data
+make down         # stop and WIPE data (the read replica's too)
 ```
 
 ---

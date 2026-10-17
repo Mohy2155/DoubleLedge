@@ -29,6 +29,11 @@
   - posting an entry through the API and then fetching the statement returns `Read-Source: replica` with the new entry
   - stopping `db_replica` makes the next statement return `Read-Source: primary` with HTTP 200
   - `docker compose up` without the override starts no replica
+- [x] 3.2 Re-clone a replica left over from a previous primary, and make `make down` remove the replica too (D6). Verify in a throwaway Compose project:
+  - after a base-only `down -v` and a restart, the old replica (replay LSN ahead of the new primary) serves 404 for new accounts, which reproduces the bug
+  - with the fix, the bootstrap logs the identifier mismatch and re-clones, and the same statement returns 200 with `Read-Source: replica`
+  - a plain replica restart does not re-clone, and a new entry is then served from the replica
+  - `make down` removes the replica container and volume, and is a no-op on an empty project
 
 ## 4. Documentation & integration
 
