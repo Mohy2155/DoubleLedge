@@ -1,6 +1,7 @@
 import io
 import re
 import uuid
+from decimal import Decimal
 import pytest
 from django.core.management import call_command
 from django.db import connection
@@ -27,10 +28,21 @@ def test_demo_bootstrap_command():
     assert tenant.name == 'Test Bootstrap Tenant'
 
     accounts = Account.objects.filter(tenant=tenant)
-    assert accounts.count() == 4
+    assert accounts.count() == 5
     account_names = set(accounts.values_list('name', flat=True))
-    assert account_names == {"Cash", "Customer Deposits", "Revenue", "Expenses"}
+    assert account_names == {"Cash", "Customer Deposits", "Revenue", "Expenses", "Cash EUR"}
+
+    # USD seed is unchanged (README walkthrough numbers); Cash EUR starts empty.
+    balances = {a.name: (a.currency, a.balance) for a in accounts}
+    assert balances == {
+        "Cash": ("USD", Decimal("950")),
+        "Customer Deposits": ("USD", Decimal("850")),
+        "Revenue": ("USD", Decimal("150")),
+        "Expenses": ("USD", Decimal("50")),
+        "Cash EUR": ("EUR", Decimal("0")),
+    }
 
     holds = Hold.objects.filter(tenant=tenant)
     assert holds.count() == 1
     assert holds.first().reference_id == 'demo-seed-hold'
+    assert holds.first().amount == Decimal("100")

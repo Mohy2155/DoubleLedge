@@ -51,6 +51,11 @@ class Command(BaseCommand):
                 tenant_id=tenant.id, name="Expenses",
                 defaults={'type': Account.Type.EXPENSE, 'currency': 'USD', 'allow_negative': False}
             )
+            # Empty second-currency account for the conversion demo
+            cash_eur, _ = Account.objects.get_or_create(
+                tenant_id=tenant.id, name="Cash EUR",
+                defaults={'type': Account.Type.ASSET, 'currency': 'EUR', 'allow_negative': False}
+            )
 
             # 2. Entries (Idempotent via post_entry with deterministic reference IDs & keys)
             # Entry 1: Seed $1,000.00 initial customer deposit
@@ -107,4 +112,5 @@ class Command(BaseCommand):
         self.stdout.write(f"ACCOUNT_CUSTOMER_DEPOSITS: {deposits.id}")
         self.stdout.write(f"ACCOUNT_REVENUE: {revenue.id}")
         self.stdout.write(f"ACCOUNT_EXPENSES: {expenses.id}")
+        self.stdout.write(f"ACCOUNT_CASH_EUR: {cash_eur.id}")
         self.stdout.write(f"HOLD_ID: {hold_id}")

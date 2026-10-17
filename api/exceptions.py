@@ -51,6 +51,23 @@ def custom_exception_handler(exc, context):
             status_code, code = error_mapping.get(message, (422, "unprocessable_entity"))
             return Response({"error": {"code": code, "message": message}}, status=status_code)
 
+        from ledger.services.fx import FxError
+        if isinstance(exc, FxError):
+            message = str(exc)
+            error_mapping = {
+                "idempotency_key_reuse": (422, "idempotency_key_reuse"),
+                "account_not_found": (404, "not_found"),
+                "same_currency": (422, "same_currency"),
+                "invalid_rate": (422, "invalid_rate"),
+                "invalid_rate_as_of": (422, "invalid_rate_as_of"),
+                "invalid_account": (422, "invalid_account"),
+                "invalid_amount": (422, "invalid_amount"),
+                "invalid_amount_format": (422, "invalid_amount_format"),
+                "invalid_amount_precision": (422, "invalid_amount_precision"),
+            }
+            status_code, code = error_mapping.get(message, (422, "unprocessable_entity"))
+            return Response({"error": {"code": code, "message": message}}, status=status_code)
+
         from ledger.services.periods import PeriodCloseError
         if isinstance(exc, PeriodCloseError):
             message = str(exc)

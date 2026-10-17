@@ -25,6 +25,16 @@ def _is_internal_entry(entry: JournalEntry) -> bool:
 def exclude_internal_lines(qs):
     return qs.exclude(journal_entry__metadata__system__isnull=False)
 
+def _direction_to_decrease(account: Account) -> str:
+    if account.type in (Account.Type.ASSET, Account.Type.EXPENSE):
+        return TransactionLine.Direction.CREDIT
+    return TransactionLine.Direction.DEBIT
+
+def _direction_to_increase(account: Account) -> str:
+    if account.type in (Account.Type.ASSET, Account.Type.EXPENSE):
+        return TransactionLine.Direction.DEBIT
+    return TransactionLine.Direction.CREDIT
+
 def retry_on_deadlock(max_retries=5, base_delay=0.1):
     def decorator(func):
         def wrapper(*args, **kwargs):
@@ -148,7 +158,16 @@ def post_entry(tenant, payload, idempotency_key: str, request_hash: bytes, bypas
     
     if len(accounts_by_id) != len(account_ids):
         raise PostingError("One or more accounts not found")
-        
+
+    # 4.1. Per-currency balance. Friendly pre-check; the deferred trg_entry_balanced_* triggers are the backstop.
+    net_by_currency = {}
+    for line in lines_data:
+        currency = accounts_by_id[str(line['account_id'])].currency
+        signed = line['amount_dec'] if line['direction'] == 'DEBIT' else -line['amount_dec']
+        net_by_currency[currency] = net_by_currency.get(currency, Decimal('0.0000')) + signed
+    if any(net_by_currency.values()):
+        raise PostingError("unbalanced_entry")
+
     # 5. Insert Journal Entry
     metadata = payload.get('metadata', {})
     entry = JournalEntry.objects.create(

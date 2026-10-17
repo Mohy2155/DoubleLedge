@@ -450,6 +450,41 @@ class HoldViewSet(viewsets.ViewSet):
             
         return Response(body, status=code, headers=headers)
 
+from ledger.services.fx import conversion_body, conversions_with_lines, convert
+from api.serializers import FxConversionCreateSerializer
+
+class FxConversionViewSet(viewsets.ViewSet):
+
+    @tenant_transaction()
+    def list(self, request):
+        conversions = conversions_with_lines(request.user.id).order_by('-created_at')[:100]
+        return Response([conversion_body(c) for c in conversions])
+
+    @tenant_transaction()
+    def retrieve(self, request, pk=None):
+        conversion = get_object_or_404(conversions_with_lines(request.user.id), id=pk)
+        return Response(conversion_body(conversion))
+
+    @tenant_transaction()
+    def create(self, request):
+        idempotency_key = request.META.get('HTTP_IDEMPOTENCY_KEY')
+        if not idempotency_key:
+            raise MissingIdempotencyKey()
+
+        serializer = FxConversionCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        request_hash = generate_idempotency_hash(request.method, request.path, request.body)
+        tenant = Tenant(id=request.user.id)
+
+        code, body, is_replayed = convert(tenant, serializer.validated_data, idempotency_key, request_hash)
+
+        headers = {}
+        if is_replayed:
+            headers['Idempotent-Replayed'] = 'true'
+
+        return Response(body, status=code, headers=headers)
+
 class PeriodCloseViewSet(viewsets.ViewSet):
 
     @tenant_transaction()
