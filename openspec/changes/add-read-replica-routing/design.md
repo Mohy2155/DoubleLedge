@@ -60,9 +60,16 @@ The `CASE` lets the `replica` alias point at a primary (tests, or misconfigurati
 
 An `OperationalError` while checking the replica closes that connection and sets a process-local `_unavailable_until = monotonic() + 30`. Until then, `choose_read_alias` returns `default` without touching the replica. *Alternative:* retrying the replica on every request. That costs a 2-second connect timeout on every request during an outage.
 
-### D6. Local streaming replica via a compose override
+### D6. Local streaming replica via a compose override that never touches `db`
 
-`docker-compose.replica.yml` overrides the primary's `command` to use a mounted `db-replica/pg_hba.conf`. That file is the image defaults plus `host replication all all scram-sha-256`; an `hba_file` override also works on existing volumes, where `db-init` scripts never re-run. It adds `db_replica` (`postgres:16.15`, `user: postgres`), which runs `pg_basebackup -R -X stream` from `db` into an empty volume and then `postgres -c hot_standby_feedback=on`. It sets `DB_REPLICA_HOST=db_replica` on `api`. Basebackup uses the dev superuser credentials. A dedicated replication role is a production concern and out of scope. `make replica` runs `docker compose -f docker-compose.yml -f docker-compose.replica.yml up -d --wait`.
+`docker-compose.replica.yml` adds `db_replica` (`postgres:16.15`, `user: postgres`), running `db-replica/bootstrap.sh`, and sets `DB_REPLICA_HOST=db_replica` on `api`. On an empty replica volume, the bootstrap:
+1. Connects to the primary as the dev superuser.
+2. If `pg_hba_file_rules` shows no network replication rule, appends `host replication all all scram-sha-256` to the primary's `hba_file` via `COPY ... TO PROGRAM` and calls `pg_reload_conf()`. The image's default `pg_hba.conf` allows replication only over localhost.
+3. Runs `pg_basebackup -R -X stream`, then `postgres -c hot_standby_feedback=on`.
+
+`make replica` runs `docker compose -f docker-compose.yml -f docker-compose.replica.yml up -d --wait`.
+
+*Rejected during implementation:* overriding the primary's `command` to mount an `hba_file`. Any later Compose invocation without the override then sees a config change and recreates `db`. The base `db` service has no named data volume, and a `docker compose run` recreate attached a fresh anonymous volume, which detached the existing dev data. Leaving `db` untouched makes toggling the replica a no-op for the primary (verified: same container ID across both switches). Basebackup uses the dev superuser credentials. A dedicated replication role and slots are production concerns and out of scope.
 
 ## Risks / Trade-offs
 

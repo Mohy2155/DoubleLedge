@@ -32,7 +32,7 @@ Statements and point-in-time balances are the ledger's heaviest reads. They scan
   - `ledger/services/replica.py` (new): alias choice and tenant-scoped reads.
   - `ledger/services/snapshots.py` and `ledger/services/sharding.py`: accept a `using` alias.
   - `api/views.py`: the balance and statement actions.
-- **Infra:** `docker-compose.replica.yml`, `db-replica/pg_hba.conf`, and a `Makefile` target. The base `docker-compose.yml` is unchanged.
+- **Infra:** `docker-compose.replica.yml`, `db-replica/bootstrap.sh`, and a `Makefile` target. The base `docker-compose.yml` and the primary container are unchanged.
 - **Performance:** each routed read adds one `pg_current_wal_lsn()` call on the primary and one status query on the replica, both sub-millisecond. The history scans move off the primary whenever the replica is fresh.
 - **Compatibility:** additive. Responses gain one header, and `consistency` is a new optional query parameter.
 - **Out of scope:** routing other endpoints, multiple replicas or load balancing, waiting for a replica to catch up, and production replication management (slots, failover, a dedicated replication role).

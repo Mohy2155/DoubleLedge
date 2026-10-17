@@ -6,7 +6,7 @@ from django.shortcuts import get_object_or_404
 from django.utils.dateparse import parse_datetime
 from rest_framework import viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import APIException
+from rest_framework.exceptions import APIException, ValidationError
 from rest_framework.response import Response
 
 from api.decorators import tenant_transaction
@@ -21,6 +21,7 @@ from api.serializers import (
 from api.utils import generate_idempotency_hash
 from ledger.models import Account, JournalEntry, PeriodClose, Tenant, TransactionLine
 from ledger.services.periods import request_close
+from ledger.services.replica import CONSISTENCY_LEVELS, REPLICA_ALIAS, tenant_reads
 from ledger.services.posting import PostingError, post_entry
 
 
@@ -162,8 +163,26 @@ class AccountViewSet(viewsets.ViewSet):
     @tenant_transaction()
     @action(detail=True, methods=['get'])
     def balance(self, request, pk=None):
+        return self._routed_read(request, pk, self._balance)
+
+    @tenant_transaction()
+    @action(detail=True, methods=['get'])
+    def statement(self, request, pk=None):
+        return self._routed_read(request, pk, self._statement)
+
+    def _routed_read(self, request, pk, read):
+        """Serves a history read from the replica when it is fresh enough (ledger.services.replica)."""
+        consistency = request.query_params.get('consistency', 'bounded')
+        if consistency not in CONSISTENCY_LEVELS:
+            raise ValidationError({"consistency": f"must be one of: {', '.join(CONSISTENCY_LEVELS)}"})
+        with tenant_reads(request.user.id, consistency) as alias:
+            response = read(request, pk, alias)
+        response['Read-Source'] = 'replica' if alias == REPLICA_ALIAS else 'primary'
+        return response
+
+    def _balance(self, request, pk, alias):
         tenant_id = request.user.id
-        account = get_object_or_404(Account, id=pk, tenant_id=tenant_id)
+        account = get_object_or_404(Account.objects.using(alias), id=pk, tenant_id=tenant_id)
         
         if account.parent_account_id is not None:
             from django.http import Http404
@@ -183,7 +202,7 @@ class AccountViewSet(viewsets.ViewSet):
         from api.serializers import AccountBalanceSerializer
         from decimal import Decimal
         
-        member_ids = resolve_member_ids(tenant_id, account.id)
+        member_ids = resolve_member_ids(tenant_id, account.id, using=alias)
         
         total_balance = Decimal('0.0000')
         total_debit = Decimal('0.0000')
@@ -192,8 +211,8 @@ class AccountViewSet(viewsets.ViewSet):
         
         for member_id in member_ids:
             # We need the Account instance for BalanceQueryService
-            member_acc = Account.objects.get(tenant_id=tenant_id, id=member_id)
-            result = BalanceQueryService.get_account_balance(member_acc, as_of=as_of)
+            member_acc = Account.objects.using(alias).get(tenant_id=tenant_id, id=member_id)
+            result = BalanceQueryService.get_account_balance(member_acc, as_of=as_of, using=alias)
             total_balance += Decimal(result['balance'])
             total_debit += Decimal(result['debit_total'])
             total_credit += Decimal(result['credit_total'])
@@ -210,11 +229,9 @@ class AccountViewSet(viewsets.ViewSet):
         serializer = AccountBalanceSerializer(aggregated_result)
         return Response(serializer.data)
         
-    @tenant_transaction()
-    @action(detail=True, methods=['get'])
-    def statement(self, request, pk=None):
+    def _statement(self, request, pk, alias):
         tenant_id = request.user.id
-        account = get_object_or_404(Account, id=pk, tenant_id=tenant_id)
+        account = get_object_or_404(Account.objects.using(alias), id=pk, tenant_id=tenant_id)
         
         if account.parent_account_id is not None:
             from django.http import Http404
@@ -225,9 +242,9 @@ class AccountViewSet(viewsets.ViewSet):
         
         from ledger.services.sharding import resolve_member_ids
         from ledger.services.posting import exclude_internal_lines
-        member_ids = resolve_member_ids(tenant_id, account.id)
+        member_ids = resolve_member_ids(tenant_id, account.id, using=alias)
         
-        lines_qs = TransactionLine.objects.filter(tenant_id=tenant_id, account_id__in=member_ids).order_by('id')
+        lines_qs = TransactionLine.objects.using(alias).filter(tenant_id=tenant_id, account_id__in=member_ids).order_by('id')
         lines_qs = exclude_internal_lines(lines_qs)
         
         if cursor_id:
@@ -236,7 +253,7 @@ class AccountViewSet(viewsets.ViewSet):
         lines = list(lines_qs[:limit])
         
         if cursor_id:
-            prior_lines = TransactionLine.objects.filter(tenant_id=tenant_id, account_id__in=member_ids, id__lte=cursor_id)
+            prior_lines = TransactionLine.objects.using(alias).filter(tenant_id=tenant_id, account_id__in=member_ids, id__lte=cursor_id)
             prior_lines = exclude_internal_lines(prior_lines)
             
             debits = prior_lines.filter(direction='DEBIT').aggregate(total=Sum('amount'))['total'] or Decimal(0)

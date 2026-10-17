@@ -1,4 +1,4 @@
-.PHONY: up stop down demo stress test bench integrity
+.PHONY: up stop down demo replica stress test bench integrity
 
 up:
 	docker compose up -d
@@ -14,6 +14,10 @@ demo:
 	docker compose run --rm --no-deps owner python scripts/gen_dev_keys.py
 	docker compose up -d --wait
 	docker compose run --rm owner python manage.py demo_bootstrap
+
+# Adds a streaming read replica and points the API at it (docker-compose.replica.yml)
+replica:
+	docker compose -f docker-compose.yml -f docker-compose.replica.yml up -d --wait
 
 stress:
 	docker compose run --rm owner python scripts/demo.py

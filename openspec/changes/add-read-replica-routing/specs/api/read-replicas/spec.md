@@ -14,7 +14,7 @@ The system SHALL use a read replica only when one is configured. Without a confi
 - **THEN** the primary serves the read and the response carries `Read-Source: primary`
 
 ### Requirement: Routed endpoints
-Only `GET /api/v1/accounts/{id}/statement/` and `GET /api/v1/accounts/{id}/balance/` (with or without `as_of`) SHALL be eligible for replica routing. Their responses MUST include a `Read-Source` header whose value is `replica` or `primary`. All other endpoints, including every write, MUST use the primary.
+Only `GET /api/v1/accounts/{id}/statement/` and `GET /api/v1/accounts/{id}/balance/` (with or without `as_of`) SHALL be eligible for replica routing. Their successful responses MUST include a `Read-Source` header whose value is `replica` or `primary`. All other endpoints, including every write, MUST use the primary.
 
 #### Scenario: Header on routed endpoint
 - **WHEN** a client requests an account balance
