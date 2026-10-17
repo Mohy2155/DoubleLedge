@@ -33,7 +33,9 @@ END
 $$;
 SQL
 
-  until pg_basebackup -h db -U postgres -D "$PGDATA" -R -X stream; do sleep 1; done
+  # --checkpoint=fast: the default spread checkpoint paces the primary's dirty buffers over minutes
+  # (73s after `make stress`), which outlasts this service's healthcheck and fails `make replica`.
+  until pg_basebackup -h db -U postgres -D "$PGDATA" -R -X stream --checkpoint=fast; do sleep 1; done
   chmod 0700 "$PGDATA"
 fi
 
