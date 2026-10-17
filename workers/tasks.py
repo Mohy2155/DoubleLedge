@@ -269,6 +269,37 @@ def rollup_shards():
         with connection.cursor() as cursor:
             cursor.execute("SELECT pg_advisory_unlock(%s);", [ROLLUP_LOCK_ID])
 
+PERIOD_CLOSE_LOCK_ID = 827461928376
+
+@shared_task(ignore_result=True)
+def close_due_periods():
+    """
+    Scheduled month-end close for tenants with a close policy (tenants.period_close_grace_days).
+    Idempotent: records a close only when the eligible cutoff is past the tenant's current one.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT pg_try_advisory_lock(%s);", [PERIOD_CLOSE_LOCK_ID])
+        lock_acquired = cursor.fetchone()[0]
+
+    if not lock_acquired:
+        return
+
+    try:
+        from ledger.services.periods import close_due_period
+
+        def run_for_tenant(tenant_id):
+            # A close waits for the tenant's in-flight postings to drain.
+            with connection.cursor() as cursor:
+                cursor.execute("SET LOCAL lock_timeout = '5s'")
+            close = close_due_period(tenant_id)
+            if close:
+                logger.info(f"Closed period for tenant {tenant_id} before {close.cutoff.isoformat()}")
+
+        for_each_tenant(run_for_tenant)
+    finally:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT pg_advisory_unlock(%s);", [PERIOD_CLOSE_LOCK_ID])
+
 @shared_task
 def sweep_canary():
     stats = for_each_tenant(lambda t: None)

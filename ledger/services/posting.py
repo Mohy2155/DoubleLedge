@@ -3,6 +3,7 @@ import time
 from decimal import Decimal
 
 from django.db import OperationalError, connection, transaction
+from django.utils import timezone
 
 from ledger.models import (
     Account,
@@ -12,6 +13,7 @@ from ledger.models import (
     TransactionLine,
 )
 from ledger.services.idempotency import get_or_insert_idempotency_key
+from ledger.services.periods import get_cutoff, iso_utc
 
 
 class PostingError(Exception):
@@ -96,6 +98,17 @@ def post_entry(tenant, payload, idempotency_key: str, request_hash: bytes, bypas
             
     if net != 0:
         raise PostingError("unbalanced_entry")
+
+    # 3.1. Business time. Friendly pre-check; trg_journal_entries_period_open is the backstop.
+    effective_at = payload.get('effective_at')
+    if effective_at is None:
+        effective_at = timezone.now()
+    elif effective_at > timezone.now():
+        raise PostingError("invalid_effective_at")
+    else:
+        cutoff = get_cutoff(tenant.id)
+        if cutoff is not None and effective_at < cutoff:
+            raise PostingError("period_closed")
     
     # 3.5. Shard Routing
     # Reversals are exempt from routing; they must use the exact account_id provided.
@@ -143,6 +156,7 @@ def post_entry(tenant, payload, idempotency_key: str, request_hash: bytes, bypas
         reference_id=reference_id,
         description=description,
         reverses_id=reverses_id,
+        effective_at=effective_at,
         metadata=metadata
     )
     
@@ -187,6 +201,7 @@ def post_entry(tenant, payload, idempotency_key: str, request_hash: bytes, bypas
             "reference_id": entry.reference_id,
             "description": entry.description,
             "reverses_id": str(entry.reverses_id) if entry.reverses_id else None,
+            "effective_at": iso_utc(entry.effective_at),
             "lines": [
                 {
                     "account_id": str(line.account.parent_account_id) if line.account.parent_account_id else str(line.account.id),
@@ -208,6 +223,7 @@ def post_entry(tenant, payload, idempotency_key: str, request_hash: bytes, bypas
             "reference_id": entry.reference_id,
             "description": entry.description,
             "reverses_id": str(entry.reverses_id) if entry.reverses_id else None,
+            "effective_at": iso_utc(entry.effective_at),
             "lines": [
                 {
                     "account_id": str(line.account.parent_account_id) if line.account.parent_account_id else str(line.account.id),

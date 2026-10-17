@@ -173,5 +173,9 @@ CELERY_BEAT_SCHEDULE = {
     'rollup-shards-every-minute': {
         'task': 'workers.tasks.rollup_shards',
         'schedule': crontab(minute='*'),
-    }
+    },
+    'close-due-periods-daily': {
+        'task': 'workers.tasks.close_due_periods',
+        'schedule': crontab(minute='15', hour='0'),  # daily at 00:15 UTC
+    },
 }
