@@ -482,7 +482,7 @@ curl -X POST http://localhost:8000/api/v1/journal-entries/ \
   2. Each `accounts.balance` equals the balance recomputed from its lines
   3. The checkpoint hash chain is intact
   
-  Failures raise an alert and a metric; the check can also `--repair` the cache (never the lines).
+  Drift is logged at `CRITICAL` and recorded in a reconciliation report.
 * **Tamper-evident checkpoints.** Periodically, each tenant's newly-posted lines are hashed into a batch hash chained to the previous checkpoint. A hash chain on *every* write would serialize all postings per tenant, so DoubleLedge seals in batches instead. Any later edit to history breaks the chain on the next verification.
 * **Point-in-time balances** as of system time (`posted_at`), using periodic balance snapshots to avoid scanning full history.
 
@@ -492,9 +492,7 @@ curl -X POST http://localhost:8000/api/v1/journal-entries/ \
 
 **Operability**
 
-* Structured JSON logs with request and tenant IDs
-* Prometheus metrics: posting latency, lock wait time, deadlock retries, idempotent replays, reconciliation drift (should always be 0)
-* OpenTelemetry tracing across API → DB → Celery
+* Structured JSON logs
 * Per-tenant rate limiting (Redis token bucket)
 * OpenAPI schema and a Swagger UI at `/api/docs/`
 
