@@ -6,9 +6,9 @@ up:
 stop:
 	docker compose stop
 
-# WIPES data
+# WIPES data, including the read replica's (docker-compose.replica.yml)
 down:
-	docker compose down -v
+	docker compose -f docker-compose.yml -f docker-compose.replica.yml down -v
 
 demo:
 	docker compose run --rm --no-deps owner python scripts/gen_dev_keys.py

@@ -1,10 +1,22 @@
 #!/bin/bash
 # Entry point of the dev read replica (docker-compose.replica.yml). Runs as the postgres OS user.
-set -e
+set -eo pipefail
+
+until pg_isready -h db -q; do sleep 1; done
+
+# The replica volume can outlive the primary's (e.g. `docker compose down -v` with only the base file).
+# Such a standby still answers queries, and its WAL position means nothing against the new primary, so
+# it can pass the API's freshness check while holding another database. Re-clone it instead.
+if [ -s "$PGDATA/PG_VERSION" ]; then
+  primary_id=$(psql -h db -U postgres -d postgres -Atc "SELECT system_identifier FROM pg_control_system()")
+  replica_id=$(pg_controldata -D "$PGDATA" | sed -n 's/^Database system identifier: *//p')
+  if [ "$primary_id" != "$replica_id" ]; then
+    echo "bootstrap: replica was cloned from database system $replica_id, primary is $primary_id; re-cloning"
+    find "$PGDATA" -mindepth 1 -delete
+  fi
+fi
 
 if [ ! -s "$PGDATA/PG_VERSION" ]; then
-  until pg_isready -h db -q; do sleep 1; done
-
   # The image's default pg_hba.conf only allows local replication connections. Append a network
   # rule on the primary once, over SQL, so the primary container never has to be reconfigured.
   psql -h db -U postgres -d postgres -v ON_ERROR_STOP=1 -q <<'SQL'
