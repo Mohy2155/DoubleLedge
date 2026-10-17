@@ -15,9 +15,12 @@ from api.serializers import (
     JournalEntryCreateSerializer,
     JournalEntryReverseSerializer,
     JournalEntrySerializer,
+    PeriodCloseCreateSerializer,
+    PeriodCloseSerializer,
 )
 from api.utils import generate_idempotency_hash
-from ledger.models import Account, JournalEntry, Tenant, TransactionLine
+from ledger.models import Account, JournalEntry, PeriodClose, Tenant, TransactionLine
+from ledger.services.periods import request_close
 from ledger.services.posting import PostingError, post_entry
 
 
@@ -428,4 +431,36 @@ class HoldViewSet(viewsets.ViewSet):
         if is_replayed:
             headers['Idempotent-Replayed'] = 'true'
             
+        return Response(body, status=code, headers=headers)
+
+class PeriodCloseViewSet(viewsets.ViewSet):
+
+    @tenant_transaction()
+    def list(self, request):
+        closes = PeriodClose.objects.filter(tenant_id=request.user.id).order_by('-cutoff')
+        results = PeriodCloseSerializer(closes, many=True).data
+        # Cutoffs only move forward, so the newest close holds the current cutoff.
+        return Response({
+            "current_cutoff": results[0]["cutoff"] if results else None,
+            "results": results,
+        })
+
+    @tenant_transaction()
+    def create(self, request):
+        idempotency_key = request.META.get('HTTP_IDEMPOTENCY_KEY')
+        if not idempotency_key:
+            raise MissingIdempotencyKey()
+
+        serializer = PeriodCloseCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        request_hash = generate_idempotency_hash(request.method, request.path, request.body)
+        tenant = Tenant(id=request.user.id)
+
+        code, body, is_replayed = request_close(tenant, serializer.validated_data['cutoff'], idempotency_key, request_hash)
+
+        headers = {}
+        if is_replayed:
+            headers['Idempotent-Replayed'] = 'true'
+
         return Response(body, status=code, headers=headers)

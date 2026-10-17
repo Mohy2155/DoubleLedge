@@ -13,6 +13,8 @@ class Tenant(models.Model):
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.TextField()
+    # None disables the scheduled monthly close; see ledger.services.periods.
+    period_close_grace_days = models.IntegerField(null=True)
 
     class Meta:
         managed = False
@@ -198,6 +200,22 @@ class BalanceSnapshot(models.Model):
         constraints = [
             models.UniqueConstraint(fields=['tenant', 'account', 'sequence'], name='unique_tenant_account_sequence')
         ]
+
+class PeriodClose(models.Model):
+    """Append-only; a tenant's cutoff is the max(cutoff). Entries with effective_at < cutoff are frozen."""
+    class Source(models.TextChoices):
+        MANUAL = 'MANUAL'
+        SCHEDULED = 'SCHEDULED'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey(Tenant, on_delete=models.PROTECT)
+    cutoff = models.DateTimeField()
+    source = models.TextField(choices=Source.choices)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        managed = False
+        db_table = 'period_closes'
 
 class Hold(models.Model):
     class Status(models.TextChoices):

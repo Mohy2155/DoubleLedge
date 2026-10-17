@@ -12,6 +12,16 @@ class StrictStringDecimalField(serializers.DecimalField):
         super().to_internal_value(data)
         return data
 
+class AwareDateTimeField(serializers.DateTimeField):
+    """Rejects timestamps without a UTC offset instead of silently assuming the server timezone."""
+    def to_internal_value(self, value):
+        if isinstance(value, str):
+            from django.utils.dateparse import parse_datetime
+            parsed = parse_datetime(value)
+            if parsed is not None and parsed.tzinfo is None:
+                raise serializers.ValidationError("Timestamp must include a UTC offset.")
+        return super().to_internal_value(value)
+
 class TransactionLineSerializer(serializers.Serializer):
     account_id = serializers.UUIDField()
     amount = StrictStringDecimalField(max_digits=19, decimal_places=4)
@@ -20,12 +30,14 @@ class TransactionLineSerializer(serializers.Serializer):
 class JournalEntryCreateSerializer(serializers.Serializer):
     reference_id = serializers.CharField(max_length=255)
     description = serializers.CharField(max_length=255, required=False, allow_blank=True, default='')
+    effective_at = AwareDateTimeField(required=False)
     lines = TransactionLineSerializer(many=True, allow_empty=False)
 
 class JournalEntrySerializer(serializers.Serializer):
     id = serializers.UUIDField(read_only=True)
     reference_id = serializers.CharField(read_only=True)
     description = serializers.CharField(read_only=True)
+    effective_at = serializers.DateTimeField(read_only=True)
     created_at = serializers.DateTimeField(read_only=True)
     lines = TransactionLineSerializer(many=True, read_only=True)
 
@@ -130,3 +142,12 @@ class HoldCaptureSerializer(serializers.Serializer):
     destination_account_id = serializers.UUIDField()
     reference_id = serializers.CharField(max_length=255)
     description = serializers.CharField(max_length=255, required=False, default='')
+
+class PeriodCloseSerializer(serializers.Serializer):
+    id = serializers.UUIDField(read_only=True)
+    cutoff = serializers.DateTimeField(read_only=True)
+    source = serializers.CharField(read_only=True)
+    created_at = serializers.DateTimeField(read_only=True)
+
+class PeriodCloseCreateSerializer(serializers.Serializer):
+    cutoff = AwareDateTimeField()

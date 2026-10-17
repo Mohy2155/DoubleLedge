@@ -11,6 +11,7 @@ DoubleLedge is an HTTP API for recording money movement for B2B platforms (marke
 | A retried request never posts twice | Idempotency row written in the *same* DB transaction as the entry |
 | One tenant can never see or reference another's data | Postgres Row-Level Security + composite foreign keys |
 | Stored balances always match the lines | Row locks on write + continuous reconciliation |
+| Nothing can be booked into a closed period | `BEFORE INSERT` triggers + a per-tenant advisory lock that serializes closes against postings |
 
 > **Scope Note:** The web tier is stateless and safe to scale or terminate at any time because every request operates within a single database transaction. The test suite explicitly verifies the enforcement of these invariants.
 
@@ -265,6 +266,15 @@ The application connects as a dedicated role with **no `BYPASSRLS` and not the t
 * Amounts cross the API as **JSON strings**, and JSON numbers are rejected, so no float ever touches a value.
 * `float` is banned by Ruff rules plus a custom AST check that fails the build if `FloatField` or a float literal appears in monetary code.
 
+### 6. Period close
+
+Clients may backdate an entry with `effective_at` (business time; `posted_at` is always system time). A tenant **closes** its books by recording a cutoff in the append-only `period_closes` table, and every entry with `effective_at < cutoff` is frozen from then on.
+
+* **Enforced by the database.** `BEFORE INSERT` triggers on `journal_entries` and `transaction_lines` reject writes into the closed period (`period_closed`), including raw SQL and lines appended to an old entry. Cutoffs only move forward and are never in the future. The runtime role has no `UPDATE`/`DELETE` on `period_closes`, so a period cannot be reopened.
+* **No race with in-flight postings.** Postings take a per-tenant advisory lock in *shared* mode, and closes take it in *exclusive* mode. Postings never block each other. A close waits for in-flight postings to finish, and a backdated posting that arrives mid-close waits, then sees the new cutoff and is rejected.
+* **Corrections** go through a reversing entry, which is dated now and so lands in the open period.
+* **Scheduled close.** A tenant with a policy (`manage.py set_period_close_policy --tenant_id <id> --grace_days 5`) has each UTC calendar month closed automatically `grace_days` after it ends, by a daily Celery beat task. The task is idempotent and catches up in one close after downtime.
+
 ---
 
 ## Schema
@@ -272,7 +282,10 @@ The application connects as a dedicated role with **no `BYPASSRLS` and not the t
 Condensed DDL (Django models are generated to match; invariants live in `RunSQL` migrations).
 
 ```sql
-CREATE TABLE tenants (id uuid PRIMARY KEY, name text NOT NULL);
+CREATE TABLE tenants (
+    id uuid PRIMARY KEY, name text NOT NULL,
+    period_close_grace_days int CHECK (period_close_grace_days BETWEEN 0 AND 27)  -- NULL = no scheduled close
+);
 
 CREATE TABLE accounts (
     id            uuid PRIMARY KEY,
@@ -323,6 +336,12 @@ CREATE TABLE ledger_checkpoints (     -- tamper-evidence, see Features
     tenant_id uuid NOT NULL, up_to_line_id bigint NOT NULL,
     batch_hash bytea NOT NULL, prev_hash bytea, created_at timestamptz NOT NULL DEFAULT now()
 );
+
+CREATE TABLE period_closes (          -- append-only; cutoff = max(cutoff), effective_at < cutoff is frozen
+    id uuid PRIMARY KEY, tenant_id uuid NOT NULL REFERENCES tenants(id),
+    cutoff timestamptz NOT NULL, source text NOT NULL CHECK (source IN ('MANUAL','SCHEDULED')),
+    created_at timestamptz NOT NULL DEFAULT now()
+);
 ```
 
 `accounts.balance` is a **denormalized cache** maintained inside the posting transaction under the row lock. The lines are the source of truth, and reconciliation continuously proves the two agree.
@@ -342,6 +361,10 @@ All endpoints are under `/api/v1`, authenticated with a short-lived RS256 JWT ca
 | `GET` | `/accounts/{id}/balance/?as_of=<ts>` | Historical balance (point-in-time) |
 | `GET` | `/accounts/{id}/statement/` | Cursor-paginated lines with running balance |
 | `POST` | `/webhook-endpoints/` | Register a webhook (HMAC-signed deliveries) |
+| `POST` | `/period-closes/` | Close the books before `cutoff` (idempotent) |
+| `GET` | `/period-closes/` | Current cutoff and close history, newest first |
+
+`POST /journal-entries/` accepts an optional `effective_at` (ISO 8601 with a UTC offset, not in the future) to backdate an entry into an open period. Omit it to post at the current time. Entry responses and `entry.*` webhooks include `effective_at`.
 
 ### Example: customer pays for an order
 
@@ -373,6 +396,9 @@ curl -X POST http://localhost:8000/api/v1/journal-entries/ \
 | `422` | `unbalanced_entry` | Debits ≠ credits (per currency) |
 | `422` | `insufficient_funds` | Would breach `allow_negative = false` |
 | `422` | `currency_mismatch` | Line amount invalid for the account's currency |
+| `422` | `invalid_effective_at` | `effective_at` is in the future |
+| `422` | `period_closed` | `effective_at` is before the tenant's period-close cutoff |
+| `422` | `invalid_period_cutoff` | Close cutoff is in the future or does not advance the current cutoff |
 | `429` | `rate_limited` | Per-tenant token bucket exceeded |
 | `503` | `lock_timeout` | Hot-account contention; retry per `Retry-After` |
 
@@ -388,6 +414,7 @@ curl -X POST http://localhost:8000/api/v1/journal-entries/ \
 * Distributed-safe idempotency with request-body fingerprinting
 * RLS-based tenant isolation with composite-FK cross-tenant protection
 * Cursor-paginated **account statements** with running balance
+* Backdated postings via `effective_at`, frozen by DB-enforced **period close** (manual or scheduled monthly)
 
 **Reliability & integrity**
 
@@ -398,7 +425,7 @@ curl -X POST http://localhost:8000/api/v1/journal-entries/ \
   
   Failures raise an alert and a metric; the check can also `--repair` the cache (never the lines).
 * **Tamper-evident checkpoints.** Periodically, each tenant's newly-posted lines are hashed into a batch hash chained to the previous checkpoint. A hash chain on *every* write would serialize all postings per tenant, so DoubleLedge seals in batches instead. Any later edit to history breaks the chain on the next verification.
-* **Point-in-time balances** using `effective_at` and periodic balance snapshots to avoid scanning full history.
+* **Point-in-time balances** as of system time (`posted_at`), using periodic balance snapshots to avoid scanning full history.
 
 **Integrations**
 
@@ -605,7 +632,7 @@ The hot-account row is intentionally included: it shows the honest ceiling of ro
 * [ ] **Read replicas** for statements and point-in-time queries
 * [ ] **Multi-currency FX helper:** rate-stamped conversion entries
 * [ ] **Per-tenant encryption of `metadata`** and signed audit exports
-* [ ] **Scheduled period close** (freeze `effective_at` before a cutoff)
+* [x] ~~**Scheduled period close** (freeze `effective_at` before a cutoff)~~
 
 ---
 

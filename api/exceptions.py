@@ -43,9 +43,21 @@ def custom_exception_handler(exc, context):
                 "One or more accounts not found": (404, "not_found"),
                 "reference_conflict": (409, "reference_conflict"),
                 "already_reversed": (409, "already_reversed"),
+                "invalid_effective_at": (422, "invalid_effective_at"),
+                "period_closed": (422, "period_closed"),
             }
             
             # Default to 422 if not found in mapping
+            status_code, code = error_mapping.get(message, (422, "unprocessable_entity"))
+            return Response({"error": {"code": code, "message": message}}, status=status_code)
+
+        from ledger.services.periods import PeriodCloseError
+        if isinstance(exc, PeriodCloseError):
+            message = str(exc)
+            error_mapping = {
+                "idempotency_key_reuse": (422, "idempotency_key_reuse"),
+                "invalid_period_cutoff": (422, "invalid_period_cutoff"),
+            }
             status_code, code = error_mapping.get(message, (422, "unprocessable_entity"))
             return Response({"error": {"code": code, "message": message}}, status=status_code)
 
@@ -55,6 +67,13 @@ def custom_exception_handler(exc, context):
         from django.db import IntegrityError
         if isinstance(exc, IntegrityError):
             err_msg = str(exc)
+            # Period triggers prefix their messages with the error code (migration 0013).
+            for period_code in ("period_closed", "invalid_period_cutoff"):
+                if err_msg.startswith(period_code):
+                    return Response(
+                        {"error": {"code": period_code, "message": err_msg.splitlines()[0]}},
+                        status=422
+                    )
             if "accounts_check" in err_msg or "violates check constraint" in err_msg:
                 return Response(
                     {"error": {"code": "insufficient_funds", "message": "Transaction rejected: account balance cannot be negative."}},
