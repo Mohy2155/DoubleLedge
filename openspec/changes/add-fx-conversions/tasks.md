@@ -82,8 +82,8 @@
 
 ## 6. Integration
 
-- [ ] 6.1 Run the full suite (`docker compose run --rm owner pytest --create-db -p no:cacheprovider --ignore-glob='*redteam*'`) and verify that everything passes (169 baseline plus the new tests).
-- [ ] 6.2 Repeat the reviewer flow on a fresh clone of the branch, in a separate Compose project: the Quickstart commands, the browser walkthrough including a conversion, `make stress` and `make integrity` (reconciliation passes with trading accounts present), and the replica stack serving a `Cash EUR` statement with `Read-Source: replica`. Verify that each step succeeds, then tear the clone down with the `make down` command.
+- [x] 6.1 Run the full suite (`docker compose run --rm owner pytest --create-db -p no:cacheprovider --ignore-glob='*redteam*'`) and verify that everything passes (169 baseline plus the new tests).
+- [x] 6.2 Repeat the reviewer flow on a fresh clone of the branch, in a separate Compose project: the Quickstart commands, the browser walkthrough including a conversion, `make stress` and `make integrity` (reconciliation passes with trading accounts present), and the replica stack serving a `Cash EUR` statement with `Read-Source: replica`. Verify that each step succeeds, then tear the clone down with the `make down` command.
 
 ## Workflow follow-up
 
