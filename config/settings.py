@@ -81,6 +81,19 @@ DATABASES = {
     }
 }
 
+# Optional streaming replica for statement / point-in-time reads (ledger.services.replica).
+# Always defined so tests can exercise it as a mirror of default; Django only connects when it is used,
+# and it is only used when DB_REPLICA_HOST is set.
+DATABASES['replica'] = {
+    **DATABASES['default'],
+    'HOST': os.environ.get('DB_REPLICA_HOST', DATABASES['default']['HOST']),
+    'PORT': os.environ.get('DB_REPLICA_PORT', DATABASES['default']['PORT']),
+    'OPTIONS': {'connect_timeout': 2},
+    'TEST': {'MIRROR': 'default'},
+}
+READ_REPLICA_ENABLED = bool(os.environ.get('DB_REPLICA_HOST'))
+READ_REPLICA_MAX_LAG_SECONDS = float(os.environ.get('READ_REPLICA_MAX_LAG_SECONDS', '5'))
+
 AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',

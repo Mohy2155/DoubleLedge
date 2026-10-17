@@ -1,23 +1,23 @@
 from decimal import Decimal
-from django.db import connection, transaction
+from django.db import DEFAULT_DB_ALIAS, connection, connections, transaction
 from django.utils import timezone
 from ledger.models import BalanceSnapshot, TransactionLine, Account, JournalEntry
 
 class BalanceQueryService:
     @staticmethod
-    def get_account_balance(account: Account, as_of=None):
+    def get_account_balance(account: Account, as_of=None, using=DEFAULT_DB_ALIAS):
         tenant_id = account.tenant_id
         
         # 1. Get latest snapshot up to the as_of date
         snapshot = None
         if as_of:
-            snapshot = BalanceSnapshot.objects.filter(
+            snapshot = BalanceSnapshot.objects.using(using).filter(
                 tenant_id=tenant_id,
                 account=account,
                 max_posted_at__lte=as_of
             ).order_by('-sequence').first()
         else:
-            snapshot = BalanceSnapshot.objects.filter(
+            snapshot = BalanceSnapshot.objects.using(using).filter(
                 tenant_id=tenant_id,
                 account=account
             ).order_by('-sequence').first()
@@ -43,7 +43,7 @@ class BalanceQueryService:
             query += " AND e.posted_at <= %s"
             params.append(as_of)
             
-        with connection.cursor() as cursor:
+        with connections[using].cursor() as cursor:
             cursor.execute(query, params)
             row = cursor.fetchone()
             delta_debit = row[0]

@@ -1,0 +1,35 @@
+# Opt-in streaming read replica for local development: `make replica`.
+# The API serves eligible history reads from db_replica when it is fresh enough (ledger.services.replica).
+# Dev-only: the replica clones the primary with the postgres superuser; production should use a
+# dedicated REPLICATION role and a replication slot.
+# The primary (db) is deliberately not overridden: changing its config would make Compose recreate it
+# whenever you switch between this file and the base one. db-replica/bootstrap.sh adds the replication
+# rule to the primary over SQL instead.
+services:
+  db_replica:
+    image: postgres:16.15
+    user: postgres
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    command: ["bash", "/bootstrap.sh"]
+    volumes:
+      - ./db-replica/bootstrap.sh:/bootstrap.sh:ro
+      - replica_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d doubleledge"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    environment:
+      DB_REPLICA_HOST: db_replica
+    depends_on:
+      db_replica:
+        condition: service_healthy
+
+volumes:
+  replica_data:

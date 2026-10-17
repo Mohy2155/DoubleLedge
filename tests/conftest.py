@@ -40,6 +40,13 @@ def create_tenant(*args, **kwargs):
 _orig_tenant_create = Tenant.objects.create
 Tenant.objects.create = create_tenant
 
+@pytest.fixture(autouse=True)
+def close_replica_connection():
+    # The replica alias is a test mirror with its own connection; close it so the test DB can be dropped.
+    yield
+    from django.db import connections
+    connections['replica'].close()
+
 @pytest.fixture
 def tenant_creator():
     return create_tenant

@@ -57,12 +57,12 @@ def create_sharded_account(
 
     return master_account
 
-def resolve_member_ids(tenant_id: uuid.UUID, account_id: uuid.UUID) -> List[uuid.UUID]:
+def resolve_member_ids(tenant_id: uuid.UUID, account_id: uuid.UUID, using: str = 'default') -> List[uuid.UUID]:
     """
     Returns the master account ID and all shard IDs if the account is sharded.
     Otherwise returns just the account ID.
     """
-    account_meta = Account.objects.filter(tenant_id=tenant_id, id=account_id).values('shard_count', 'parent_account_id').first()
+    account_meta = Account.objects.using(using).filter(tenant_id=tenant_id, id=account_id).values('shard_count', 'parent_account_id').first()
     if not account_meta:
         return [account_id]
         

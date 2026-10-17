@@ -275,6 +275,21 @@ Clients may backdate an entry with `effective_at` (business time; `posted_at` is
 * **Corrections** go through a reversing entry, which is dated now and so lands in the open period.
 * **Scheduled close.** A tenant with a policy (`manage.py set_period_close_policy --tenant_id <id> --grace_days 5`) has each UTC calendar month closed automatically `grace_days` after it ends, by a daily Celery beat task. The task is idempotent and catches up in one close after downtime.
 
+### 7. Read replicas
+
+Statements and balances (current and `as_of`) are the heavy reads. When `DB_REPLICA_HOST` is set they can be served by a streaming replica, but only when the replica is provably fresh enough. Every other endpoint and every write uses the primary.
+
+* **Freshness rule.**
+  * The API first reads the primary's WAL position (`pg_current_wal_lsn()`).
+  * If the replica has replayed past it, the replica has every commit made before the request started, so it serves the read. This gives read-your-writes.
+  * Otherwise, under the default `consistency=bounded`, the replica serves the read only if its replay lag is at most `READ_REPLICA_MAX_LAG_SECONDS` (default 5). Unknown lag counts as stale.
+  * `?consistency=strong` never accepts a replica that hasn't caught up.
+  * A disconnected replica stops replaying while the primary moves on, so its lag grows and reads move to the primary.
+* **RLS on the replica.** Replica reads run in their own replica transaction with `app.tenant_id` set. Without that, fail-closed RLS would return silently empty statements.
+* **Fallback.** If the replica is unreachable, reads go to the primary, and the replica is skipped for 30 seconds instead of paying a connect timeout on every request.
+* **Observability.** Routed responses carry `Read-Source: replica|primary`.
+* **No router.** Routing is explicit (`.using(alias)`) in the two read paths. A global Django router would also route `select_for_update()` and reads inside write paths.
+
 ---
 
 ## Schema
@@ -365,6 +380,8 @@ All endpoints are under `/api/v1`, authenticated with a short-lived RS256 JWT ca
 | `GET` | `/period-closes/` | Current cutoff and close history, newest first |
 
 `POST /journal-entries/` accepts an optional `effective_at` (ISO 8601 with a UTC offset, not in the future) to backdate an entry into an open period. Omit it to post at the current time. Entry responses and `entry.*` webhooks include `effective_at`.
+
+`/accounts/{id}/statement/` and `/accounts/{id}/balance/` accept `?consistency=bounded` (the default) or `strong`, and report the database that served them in the `Read-Source` header (see [Read replicas](#7-read-replicas)).
 
 ### Example: customer pays for an order
 
@@ -464,6 +481,8 @@ docker compose run --rm owner python manage.py demo_bootstrap
 ```
 
 Open `http://localhost:8000/demo/` in your browser and paste the printed dev JWT token to explore.
+
+To also run a streaming read replica, use `make replica`. Without `make`, run `docker compose -f docker-compose.yml -f docker-compose.replica.yml up -d --wait`. This clones the running primary, which also works on an existing data volume, and the API serves statements and balances from the replica while it is fresh. Run plain `docker compose up -d` to switch back. The primary is never reconfigured or recreated either way.
 
 <p align="center">
   <img src="docs/screenshots/01-overview.png" width="900"
@@ -629,7 +648,7 @@ The hot-account row is intentionally included: it shows the honest ceiling of ro
 
 * [x] ~~**Holds / two-phase postings:** authorize → capture/release, with `available_balance = balance − active holds`~~
 * [x] ~~**Hot-account sharding:** split a hot account into N sub-accounts with periodic sweep~~
-* [ ] **Read replicas** for statements and point-in-time queries
+* [x] ~~**Read replicas** for statements and point-in-time queries~~
 * [ ] **Multi-currency FX helper:** rate-stamped conversion entries
 * [ ] **Per-tenant encryption of `metadata`** and signed audit exports
 * [x] ~~**Scheduled period close** (freeze `effective_at` before a cutoff)~~
@@ -647,7 +666,9 @@ doubleledge/
 ├── workers/           # Celery tasks: outbox relay, checkpoints, pruning
 ├── tests/             # unit, race, crash, property-based, isolation
 ├── scripts/           # demo.py, load tests
-└── docker-compose.yml
+├── db-replica/        # dev read-replica bootstrap (used by docker-compose.replica.yml)
+├── docker-compose.yml
+└── docker-compose.replica.yml   # opt-in streaming read replica (make replica)
 ```
 
 
